@@ -102,6 +102,21 @@ namespace AIChat.Views
             if (e.LeftButton == MouseButtonState.Pressed) DragMove();
         }
 
+        /// <summary>
+        /// 自绘缩放柄按下：向窗口发 SC_SIZE + HTBOTTOMRIGHT 进入系统缩放循环，
+        /// 拖动全程由系统接管，最小/最大尺寸约束依然生效。
+        /// </summary>
+        private void ResizeGrip_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            e.Handled = true;
+            try
+            {
+                SendMessage(new WindowInteropHelper(this).Handle,
+                    (uint)WmSysCommand, new IntPtr(ScSize + HtBottomRight), IntPtr.Zero);
+            }
+            catch { }
+        }
+
         private void InputBox_PreviewKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Shift) == 0)
