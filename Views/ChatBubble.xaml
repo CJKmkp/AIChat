@@ -3,21 +3,55 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:ui="http://schemas.inkore.net/lib/ui/wpf/modern"
+             xmlns:ikw="http://schemas.inkore.net/lib/ui/wpf"
              xmlns:ai="clr-namespace:AIChat"
              mc:Ignorable="d"
              d:DesignHeight="80" d:DesignWidth="500">
+    <UserControl.Resources>
+        <Style x:Key="BubbleIconButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="#40FFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{DynamicResource FloatingBarForegroundBrush}"/>
+            <Setter Property="Padding" Value="10,3"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#22FFFFFF"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#33FFFFFF"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
     <Border Margin="0,6" Padding="0" HorizontalAlignment="Stretch">
         <Grid>
-            <!-- 用户消息：右对齐，无气泡，仅头像 + 文字块 -->
+            <!-- 用户消息：右对齐，主色块 + 头像 -->
             <Grid x:Name="UserBlock"
                   HorizontalAlignment="Right"
                   Visibility="Collapsed">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <Border Grid.Column="1"
+                <Border Grid.Column="0"
                         CornerRadius="14"
                         Padding="12,8"
                         Margin="0,0,8,0"
@@ -28,7 +62,7 @@
                                Foreground="White"
                                FontSize="14"/>
                 </Border>
-                <Border Grid.Column="2"
+                <Border Grid.Column="1"
                         Width="32" Height="32"
                         CornerRadius="16"
                         Background="#22FFFFFF"
@@ -38,7 +72,7 @@
                 </Border>
             </Grid>
 
-            <!-- AI 消息：左对齐，无气泡，仅头像 + 文字段落 + 操作按钮 -->
+            <!-- AI 消息：左对齐，头像 + 名字 + 段落 + 操作按钮 -->
             <StackPanel x:Name="AiBlock"
                         HorizontalAlignment="Left"
                         MaxWidth="440"
@@ -77,33 +111,25 @@
                            Foreground="#99FFFFFF"
                            FontSize="12"
                            Visibility="Collapsed"/>
-                <!-- 操作按钮 -->
-                <StackPanel x:Name="AiActions"
-                            Margin="40,8,0,0"
-                            Orientation="Horizontal"
-                            Visibility="Collapsed">
+                <!-- 操作按钮：复制 / 插入画布 / 重新生成 -->
+                <ikw:SimpleStackPanel x:Name="AiActions"
+                                       Margin="40,8,0,0"
+                                       Orientation="Horizontal"
+                                       Spacing="6"
+                                       Visibility="Collapsed">
                     <Button x:Name="BtnCopy"
                             Content="{Binding BtnCopy, Source={x:Static ai:Localized.Current}}"
-                            Padding="10,3" Margin="0,0,4,0"
-                            Background="Transparent"
-                            BorderBrush="#40FFFFFF"
-                            Foreground="{DynamicResource FloatingBarForegroundBrush}"
+                            Style="{StaticResource BubbleIconButtonStyle}"
                             Click="BtnCopy_Click"/>
                     <Button x:Name="BtnInsert"
                             Content="{Binding BtnInsert, Source={x:Static ai:Localized.Current}}"
-                            Padding="10,3" Margin="0,0,4,0"
-                            Background="Transparent"
-                            BorderBrush="#40FFFFFF"
-                            Foreground="{DynamicResource FloatingBarForegroundBrush}"
+                            Style="{StaticResource BubbleIconButtonStyle}"
                             Click="BtnInsert_Click"/>
                     <Button x:Name="BtnRegenerate"
                             Content="{Binding BtnRegenerate, Source={x:Static ai:Localized.Current}}"
-                            Padding="10,3"
-                            Background="Transparent"
-                            BorderBrush="#40FFFFFF"
-                            Foreground="{DynamicResource FloatingBarForegroundBrush}"
+                            Style="{StaticResource BubbleIconButtonStyle}"
                             Click="BtnRegenerate_Click"/>
-                </StackPanel>
+                </ikw:SimpleStackPanel>
             </StackPanel>
         </Grid>
     </Border>

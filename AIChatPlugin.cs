@@ -77,6 +77,11 @@ namespace AIChat
                     SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
             }
 
+            // 解析宿主主窗口（用来把悬浮按钮贴在宿主窗口右上角内部，跟随宿主移动/最小化）
+            // ——这是独立置顶窗口宿主绘制时容易被宿主主窗口盖住的问题的稳妥做法。
+            try { FloatingButtonHostWindow = Application.Current?.MainWindow as Window; }
+            catch { FloatingButtonHostWindow = null; }
+
             // 创建窗口（先 ChatWindow，再悬浮按钮）
             ChatWindow = new ChatWindow
             {
@@ -92,8 +97,40 @@ namespace AIChat
                 Plugin = this,
                 ScreenBounds = FloatingButtonScreen
             };
+            // 无论持久化位置如何，每次启动都重置到宿主主窗口右上角内部——
+            // 因为独立 Topmost 透明窗口在多屏/DPI 切换后很容易跑到屏外或被宿主盖住，
+            // 用户找不到的体验比"位置不记忆"更糟。后续可改成"按 Shift 启动时复位、否则恢复"。
             FloatingButton.ApplyPosition(ConfigStore.Current.ButtonPosition);
-            FloatingButton.Show();
+            // 总是尝试复位（无论首启动与否）。若宿主窗口还没 Loaded 则在 ContentRendered 后再试。
+            if (FloatingButtonHostWindow != null && FloatingButtonHostWindow.IsLoaded)
+            {
+                ResetFloatingToHostWindow();
+            }
+            else if (FloatingButtonHostWindow != null)
+            {
+                FloatingButtonHostWindow.ContentRendered += (_, __) => ResetFloatingToHostWindow();
+            }
+            else
+            {
+                // 拿不到宿主窗口时，在 Loaded 后用主屏工作区摆位（兜底）
+                FloatingButton.Loaded += (_, __) => ResetFloatingToHostWindow();
+            }
+            FloatingButton.Loaded += (_, __) =>
+            {
+                Log($"悬浮按钮 Loaded: Width={FloatingButton.ActualWidth} Height={FloatingButton.ActualHeight} " +
+                    $"Left={FloatingButton.Left} Top={FloatingButton.Top} " +
+                    $"IsVisible={FloatingButton.IsVisible} V={FloatingButton.Visibility} " +
+                    $"ScreenBounds=({FloatingButtonScreen.X},{FloatingButtonScreen.Y},{FloatingButtonScreen.Width},{FloatingButtonScreen.Height})");
+            };
+            try
+            {
+                FloatingButton.Show();
+                Log($"悬浮按钮 Show 完成: IsVisible={FloatingButton.IsVisible} V={FloatingButton.Visibility}");
+            }
+            catch (Exception ex)
+            {
+                LogError("悬浮按钮 Show 失败: " + ex.Message, ex);
+            }
 
             // 订阅宿主事件
             if (_eventSvc != null)
@@ -189,6 +226,62 @@ namespace AIChat
                 ConfigStore.SaveConfig();
             }
             catch (Exception ex) { LogError("Save floating position: " + ex.Message, ex); }
+        }
+
+        /// <summary>
+        /// 强制重置/显示悬浮按钮（用于调试或在屏幕上找不到时恢复）。
+        /// </summary>
+        public void ShowOrResetFloatingButton()
+        {
+            try
+            {
+                if (FloatingButton == null) return;
+                ResetFloatingToHostWindow();
+                SaveConfigFromFloatingButton();
+            }
+            catch (Exception ex) { LogError("ShowOrResetFloatingButton: " + ex.Message, ex); }
+        }
+
+        /// <summary>
+        /// 宿主主窗口（用于把悬浮按钮贴在宿主窗口右上角内部，跟随宿主移动/最小化）。
+        /// </summary>
+        public Window FloatingButtonHostWindow { get; private set; }
+
+        /// <summary>
+        /// 把悬浮按钮复位到宿主主窗口右上角内部（不被宿主主窗口盖住，跟随宿主窗口）。
+        /// 如果拿不到宿主主窗口，则回退到主屏右边缘中部。
+        /// </summary>
+        public void ResetFloatingToHostWindow()
+        {
+            if (FloatingButton == null) return;
+            try
+            {
+                if (FloatingButtonHostWindow != null
+                    && FloatingButtonHostWindow.WindowState != WindowState.Minimized
+                    && FloatingButtonHostWindow.ActualWidth > 0
+                    && FloatingButtonHostWindow.ActualHeight > 0)
+                {
+                    // 用宿主窗口的屏幕坐标，把悬浮按钮贴在右上角内部
+                    var p = FloatingButtonHostWindow.PointToScreen(new Point(0, 0));
+                    FloatingButton.Left = p.X + FloatingButtonHostWindow.ActualWidth - FloatingButton.Width - 12;
+                    FloatingButton.Top = p.Y + 80;
+                }
+                else
+                {
+                    var sb = FloatingButtonScreen;
+                    if (sb.Width <= 0)
+                    {
+                        sb = new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
+                        FloatingButtonScreen = sb;
+                    }
+                    FloatingButton.Left = sb.Right - FloatingButton.Width - 8;
+                    FloatingButton.Top = sb.Top + (sb.Height - FloatingButton.Height) / 2;
+                }
+                if (!FloatingButton.IsVisible) FloatingButton.Show();
+                FloatingButton.Activate();
+                Log($"ResetFloatingToHostWindow: L={FloatingButton.Left} T={FloatingButton.Top} W={FloatingButton.Width} H={FloatingButton.Height}");
+            }
+            catch (Exception ex) { LogError("ResetFloatingToHostWindow: " + ex.Message, ex); }
         }
 
         public string GetSystemPrompt() => ConfigStore?.Current?.SystemPrompt ?? "";

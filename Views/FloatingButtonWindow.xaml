@@ -11,8 +11,7 @@
         ShowInTaskbar="False"
         Topmost="True"
         ResizeMode="NoResize"
-        SizeToContent="WidthAndHeight"
-        Focusable="False"
+        Width="65" Height="45"
         SnapsToDevicePixels="True"
         UseLayoutRounding="True"
         Title="AIChat Floating">

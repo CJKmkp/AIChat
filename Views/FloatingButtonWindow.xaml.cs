@@ -126,7 +126,7 @@ namespace AIChat.Views
         /// </summary>
         private void DockToNearestEdge()
         {
-            var pos = new Point(Left + ActualWidth / 2, Top + ActualHeight / 2);
+            var pos = new Point(Left + Width / 2, Top + Height / 2);
             var sb = _screenBounds;
             double distRight = sb.Right - pos.X;
             double distLeft = pos.X - sb.Left;
@@ -136,18 +136,18 @@ namespace AIChat.Views
             double min = Math.Min(Math.Min(distRight, distLeft), Math.Min(distBottom, distTop));
             const double margin = 0;
             if (min == distRight)
-                Left = sb.Right - ActualWidth + margin;
+                Left = sb.Right - Width + margin;
             else if (min == distLeft)
                 Left = sb.Left - margin;
             else if (min == distBottom)
-                Top = sb.Bottom - ActualHeight + margin;
+                Top = sb.Bottom - Height + margin;
             else
                 Top = sb.Top - margin;
             // 限制在工作区内
             if (Top < sb.Top) Top = sb.Top;
-            if (Top > sb.Bottom - ActualHeight) Top = sb.Bottom - ActualHeight;
+            if (Top > sb.Bottom - Height) Top = sb.Bottom - Height;
             if (Left < sb.Left) Left = sb.Left;
-            if (Left > sb.Right - ActualWidth) Left = sb.Right - ActualWidth;
+            if (Left > sb.Right - Width) Left = sb.Right - Width;
         }
 
         /// <summary>
@@ -163,21 +163,28 @@ namespace AIChat.Views
         /// </summary>
         public void ApplyPosition(ButtonPositionState pos)
         {
+            // 使用显式 Width/Height 而不是 ActualWidth/ActualHeight：
+            // 此方法在 Show 之前调用，Window 尚未布局，ActualWidth=0 会导致位置跑到屏外。
+            var sb = _screenBounds;
+            if (sb.Width <= 0 || sb.Height <= 0)
+            {
+                sb = new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
+                _screenBounds = sb;
+            }
             if (pos == null || double.IsNaN(pos.Left) || double.IsNaN(pos.Top))
             {
                 // 默认贴右侧中部
-                var sb = _screenBounds;
-                if (sb.Width <= 0 || sb.Height <= 0)
-                {
-                    sb = new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
-                    _screenBounds = sb;
-                }
-                Left = sb.Right - ActualWidth - 8;
-                Top = sb.Top + (sb.Height - ActualHeight) / 2;
+                Left = sb.Right - Width - 8;
+                Top = sb.Top + (sb.Height - Height) / 2;
                 return;
             }
             Left = pos.Left;
             Top = pos.Top;
+            // 夹紧到当前工作区（防止之前保存的坐标在多屏/DPI 改变后落到屏外）
+            if (Left < sb.Left - Width) Left = sb.Right - Width - 8;
+            if (Left > sb.Right) Left = sb.Right - Width - 8;
+            if (Top < sb.Top) Top = sb.Top;
+            if (Top > sb.Bottom - Height) Top = sb.Bottom - Height;
         }
 
         public ButtonPositionState CapturePosition()
