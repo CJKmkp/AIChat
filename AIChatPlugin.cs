@@ -251,38 +251,26 @@ namespace AIChat
         public Window FloatingButtonHostWindow { get; private set; }
 
         /// <summary>
-        /// 把悬浮按钮复位到宿主主窗口右上角内部（不被宿主主窗口盖住，跟随宿主窗口）。
-        /// 如果拿不到宿主主窗口，则回退到主屏右边缘中部。
+        /// 把悬浮按钮复位到默认停放位置：贴主屏工作区右边缘、垂直居中。
+        /// 高度 200 与宿主「快抽」窗口（QuickDrawWindow, 200）相近，贴右边停放可避开
+        /// 右下角快抽悬浮按钮与居中弹出的快抽窗口，互不遮挡。
+        /// 注意：用 WPF 原生 SystemParameters.WorkArea（DIP，与 Window.Left/Top 同一坐标系）定位；
+        /// 不要用宿主注入的 FloatingButtonScreen——它来自 WinForms 物理像素坐标，DPI≠100% 时
+        /// 会把窗口推出屏外导致按钮“消失”。
         /// </summary>
         public void ResetFloatingToHostWindow()
         {
             if (FloatingButton == null) return;
             try
             {
-                if (FloatingButtonHostWindow != null
-                    && FloatingButtonHostWindow.WindowState != WindowState.Minimized
-                    && FloatingButtonHostWindow.ActualWidth > 0
-                    && FloatingButtonHostWindow.ActualHeight > 0)
-                {
-                    // 用宿主窗口的屏幕坐标，把悬浮按钮贴在右上角内部
-                    var p = FloatingButtonHostWindow.PointToScreen(new Point(0, 0));
-                    FloatingButton.Left = p.X + FloatingButtonHostWindow.ActualWidth - FloatingButton.Width - 12;
-                    FloatingButton.Top = p.Y + 80;
-                }
-                else
-                {
-                    var sb = FloatingButtonScreen;
-                    if (sb.Width <= 0)
-                    {
-                        sb = new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
-                        FloatingButtonScreen = sb;
-                    }
-                    FloatingButton.Left = sb.Right - FloatingButton.Width - 8;
-                    FloatingButton.Top = sb.Top + (sb.Height - FloatingButton.Height) / 2;
-                }
+                var wa = SystemParameters.WorkArea;
+                var w = double.IsNaN(FloatingButton.Width) ? 65 : FloatingButton.Width;
+                var h = double.IsNaN(FloatingButton.Height) ? 200 : FloatingButton.Height;
+                FloatingButton.Left = wa.Right - w - 8;
+                FloatingButton.Top = wa.Top + (wa.Height - h) / 2;
                 if (!FloatingButton.IsVisible) FloatingButton.Show();
                 FloatingButton.Activate();
-                Log($"ResetFloatingToHostWindow: L={FloatingButton.Left} T={FloatingButton.Top} W={FloatingButton.Width} H={FloatingButton.Height}");
+                Log($"ResetFloatingToHostWindow: L={FloatingButton.Left} T={FloatingButton.Top} W={w} H={h} WorkArea=({wa.X},{wa.Y},{wa.Width},{wa.Height})");
             }
             catch (Exception ex) { LogError("ResetFloatingToHostWindow: " + ex.Message, ex); }
         }

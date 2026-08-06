@@ -1,7 +1,9 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using AIChat.Views;
 using Ink_Canvas.Plugins;
 
@@ -15,6 +17,16 @@ namespace AIChat.Views
     public partial class FloatingButtonWindow : Window
     {
         private const double DragThreshold = 3.0;
+
+        // 无焦点悬浮：窗口不参与激活、点击不抢焦点（WS_EX_NOACTIVATE，与宿主液态玻璃栏同款做法）
+        private const int GWL_EXSTYLE = -20;
+        private const int WS_EX_NOACTIVATE = 0x08000000;
+
+        [DllImport("user32.dll")]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll")]
+        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
         public AIChatPlugin Plugin { get; set; }
 
@@ -40,6 +52,22 @@ namespace AIChat.Views
             {
                 var themeSvc = Plugin?.Services?.GetService(typeof(IThemeService)) as IThemeService;
                 themeSvc?.ApplyThemeToElement(this);
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// 悬浮窗无焦点：挂 WS_EX_NOACTIVATE，点击/显示都不激活、不抢键盘焦点，
+        /// 不会打断正在进行的板书/演示。
+        /// </summary>
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            try
+            {
+                var hwnd = new WindowInteropHelper(this).Handle;
+                var exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+                SetWindowLong(hwnd, GWL_EXSTYLE, exStyle | WS_EX_NOACTIVATE);
             }
             catch { }
         }
