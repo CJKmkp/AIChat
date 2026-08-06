@@ -1,0 +1,186 @@
+<Window x:Class="AIChat.Views.ChatWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:local="clr-namespace:AIChat.Views"
+        xmlns:ai="clr-namespace:AIChat"
+        mc:Ignorable="d"
+        Title="AI Chat"
+        Width="480" Height="700"
+        MinWidth="360" MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="True"
+        Background="Transparent"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        ResizeMode="CanResizeWithGrip"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True">
+    <Border Background="{DynamicResource FloatingBarBackgroundBrush}"
+            BorderBrush="{DynamicResource FloatingBarBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="14">
+        <Border.Effect>
+            <DropShadowEffect Color="Black" Direction="270" ShadowDepth="2" Opacity="0.35" BlurRadius="8"/>
+        </Border.Effect>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="52"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- 顶部：模型下拉（左）+ 操作按钮（右） -->
+            <Grid Grid.Row="0" Margin="14,0,10,0"
+                  MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- 模型选择下拉（点击切换厂商/协议） -->
+                <Border Grid.Column="0"
+                        Background="#22FFFFFF"
+                        CornerRadius="8"
+                        Padding="10,5"
+                        Cursor="Hand"
+                        MouseLeftButtonUp="ModelPicker_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="ModelNameText"
+                                   Text="deepseek-chat"
+                                   Foreground="{DynamicResource FloatingBarForegroundBrush}"
+                                   FontSize="13"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Text="▾"
+                                   Foreground="{DynamicResource FloatingBarForegroundBrush}"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   Margin="6,0,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="BtnClear" Width="34" Height="34" Margin="0,0,2,0"
+                            Background="Transparent" Foreground="{DynamicResource FloatingBarForegroundBrush}" BorderBrush="Transparent"
+                            Click="BtnClear_Click"
+                            ToolTip="{Binding BtnClear, Source={x:Static ai:Localized.Current}}">
+                        <TextBlock Text="🗑" FontSize="15"/>
+                    </Button>
+                    <Button x:Name="BtnClose" Width="34" Height="34"
+                            Background="Transparent" Foreground="{DynamicResource FloatingBarForegroundBrush}" BorderBrush="Transparent"
+                            Click="BtnClose_Click"
+                            ToolTip="关闭">
+                        <TextBlock Text="✕" FontSize="14"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!-- 消息列表 + 空状态 -->
+            <Grid Grid.Row="1">
+                <!-- 空状态（无消息时显示） -->
+                <StackPanel x:Name="EmptyState"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            IsHitTestVisible="False">
+                    <Border Width="120" Height="120"
+                            CornerRadius="60"
+                            Background="#22FFFFFF"
+                            HorizontalAlignment="Center">
+                        <TextBlock Text="🤖"
+                                   FontSize="56"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="开始新对话"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource FloatingBarForegroundBrush}"
+                               HorizontalAlignment="Center"
+                               Margin="0,16,0,4"/>
+                    <TextBlock Text="向 AI 助手提问，或粘贴文本以获得回应"
+                               FontSize="13"
+                               Foreground="#99FFFFFF"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+
+                <ScrollViewer x:Name="MessagesScroll"
+                              VerticalScrollBarVisibility="Auto"
+                              Background="Transparent"
+                              Visibility="Collapsed">
+                    <ItemsControl x:Name="MessagesList" Margin="14,8,14,8">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <local:ChatBubble/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+
+            <!-- 底部胶囊输入条 -->
+            <Border Grid.Row="2"
+                    Margin="14,8,14,14"
+                    Background="#22FFFFFF"
+                    CornerRadius="22"
+                    Padding="6,6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 左侧 + 按钮（菜单：插入画布/清空） -->
+                    <Button x:Name="BtnMore" Grid.Column="0"
+                            Width="32" Height="32" Margin="2,0,4,0"
+                            Background="Transparent" Foreground="{DynamicResource FloatingBarForegroundBrush}" BorderBrush="Transparent"
+                            Click="BtnMore_Click"
+                            ToolTip="更多">
+                        <TextBlock Text="＋" FontSize="18"/>
+                    </Button>
+
+                    <Button x:Name="BtnCanvas" Grid.Column="1"
+                            Width="32" Height="32" Margin="0,0,4,0"
+                            Background="Transparent" Foreground="{DynamicResource FloatingBarForegroundBrush}" BorderBrush="Transparent"
+                            Click="BtnCanvas_Click"
+                            ToolTip="将最后一次回答插入画布">
+                        <TextBlock Text="🖼" FontSize="15"/>
+                    </Button>
+
+                    <TextBox x:Name="InputBox"
+                             Grid.Column="2"
+                             MinHeight="36" MaxHeight="120"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Foreground="{DynamicResource FloatingBarForegroundBrush}"
+                             VerticalContentAlignment="Center"
+                             Padding="4,0,4,0"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             PreviewKeyDown="InputBox_PreviewKeyDown"/>
+
+                    <!-- 流式生成中显示停止按钮，否则显示发送按钮 -->
+                    <Button x:Name="BtnStop" Grid.Column="3"
+                            Width="32" Height="32" Margin="4,0,2,0"
+                            Background="Transparent" Foreground="#DC2626" BorderBrush="Transparent"
+                            Click="BtnStop_Click" Visibility="Collapsed"
+                            ToolTip="{Binding BtnStop, Source={x:Static ai:Localized.Current}}">
+                        <TextBlock Text="■" FontSize="12"/>
+                    </Button>
+
+                    <Button x:Name="BtnSend" Grid.Column="4"
+                            Width="36" Height="32" Margin="2,0,4,0"
+                            Background="Transparent" Foreground="{DynamicResource FloatingBarAccentBrush}" BorderBrush="Transparent"
+                            Click="BtnSend_Click"
+                            ToolTip="{Binding BtnSend, Source={x:Static ai:Localized.Current}}">
+                        <TextBlock Text="➤" FontSize="18" FontWeight="Bold"/>
+                    </Button>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

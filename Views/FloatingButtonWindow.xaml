@@ -1,0 +1,101 @@
+<Window x:Class="AIChat.Views.FloatingButtonWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:ai="clr-namespace:AIChat"
+        mc:Ignorable="d"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True"
+        ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight"
+        Focusable="False"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True"
+        Title="AIChat Floating">
+    <!--
+        参考宿主 QuickDrawFloatingButtonControl：
+        - 65x45 圆角小卡片，深色背景 + DropShadowEffect
+        - 左侧拖动把手三条横线（Cursor SizeAll）
+        - 半透明白色分隔线
+        - 右侧聊天气泡图标
+        资源使用宿主 FloatingBar*Brush 动态资源，自动跟随主题。
+    -->
+    <Border x:Name="CardBorder"
+            Background="{DynamicResource FloatingBarBackgroundBrush}"
+            BorderBrush="{DynamicResource FloatingBarBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            SnapsToDevicePixels="True">
+        <Border.Effect>
+            <DropShadowEffect Color="Black" Direction="315" ShadowDepth="3" Opacity="0.3" BlurRadius="5"/>
+        </Border.Effect>
+
+        <Grid Height="45" Width="65">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="22"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 拖动区域：三条白色横线 -->
+            <Border Grid.Column="0"
+                    x:Name="DragArea"
+                    Background="Transparent"
+                    Cursor="SizeAll"
+                    MouseLeftButtonDown="DragArea_MouseLeftButtonDown"
+                    MouseMove="DragArea_MouseMove"
+                    MouseLeftButtonUp="DragArea_MouseLeftButtonUp">
+                <Grid VerticalAlignment="Center" Height="14" IsHitTestVisible="False">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="4"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="4"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Background="{DynamicResource FloatingBarForegroundBrush}"
+                            Height="2" Width="10" HorizontalAlignment="Center"
+                            CornerRadius="1" Opacity="0.8"/>
+                    <Border Grid.Row="2" Background="{DynamicResource FloatingBarForegroundBrush}"
+                            Height="2" Width="10" HorizontalAlignment="Center"
+                            CornerRadius="1" Opacity="0.8"/>
+                    <Border Grid.Row="4" Background="{DynamicResource FloatingBarForegroundBrush}"
+                            Height="2" Width="10" HorizontalAlignment="Center"
+                            CornerRadius="1" Opacity="0.8"/>
+                </Grid>
+            </Border>
+
+            <!-- 半透明分隔线 -->
+            <Rectangle Grid.Column="1" Width="1" Fill="#20FFFFFF" Margin="0,8,0,8"/>
+
+            <!-- 按钮区域：聊天气泡图标 -->
+            <Border Grid.Column="2"
+                    x:Name="ClickArea"
+                    Background="Transparent"
+                    Cursor="Hand"
+                    MouseLeftButtonUp="ClickArea_MouseLeftButtonUp"
+                    ToolTip="{Binding Floating_ToolTip, Source={x:Static ai:Localized.Current}}">
+                <Grid IsHitTestVisible="False">
+                    <Path Data="M2 3C2 2.44772 2.44772 2 3 2H14C14.5523 2 15 2.44772 15 3V12C15 12.5523 14.5523 13 14 13H7L4 16V13H3C2.44772 13 2 12.5523 2 12V3Z M6 7C5.72386 7 5.5 7.22386 5.5 7.5 5.5 7.77614 5.72386 8 6 8 6.27614 8 6.5 7.77614 6.5 7.5 6.5 7.22386 6.27614 7 6 7Z M8.5 7C8.22386 7 8 7.22386 8 7.5 8 7.77614 8.22386 8 8.5 8 8.77614 8 9 7.77614 9 7.5 9 7.22386 8.77614 7 8.5 7Z M11 7C10.7239 7 10.5 7.22386 10.5 7.5 10.5 7.77614 10.7239 8 11 8 11.2761 8 11.5 7.77614 11.5 7.5 11.5 7.22386 11.2761 7 11 7Z"
+                          Stroke="{DynamicResource FloatingBarForegroundBrush}"
+                          StrokeThickness="1.4"
+                          StrokeLineJoin="Round"
+                          Fill="Transparent"
+                          Width="20" Height="20"
+                          Stretch="Uniform"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- 右键菜单：动态在代码中填充 -->
+        <Border.ContextMenu>
+            <ContextMenu x:Name="ContextMenuRoot"/>
+        </Border.ContextMenu>
+    </Border>
+</Window>
