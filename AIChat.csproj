@@ -19,12 +19,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!--
-      所需宿主服务接口（IThemeService / IScreenInfoService / ICanvasElementService 等）
-      当前的 NuGet 包 InkCanvas.PluginSdk 1.7.19.9-* 暂未包含，因此引用主仓库 SDK 源码。
-      待 SDK 发布包含全部接口的新版 NuGet 后，可改回 PackageReference 并按 SDK 实际版本号升版。
-    -->
-    <ProjectReference Include="..\ICC CE main\community\InkCanvas.PluginSdk\InkCanvas.PluginSdk.csproj" PrivateAssets="all" />
+    <!-- 所需宿主服务接口（IThemeService / IScreenInfoService / ICanvasElementService 等）：
+         1.7.19.9-gda522a8757 起 NuGet 已包含，故改回 PackageReference（与其它插件一致，
+         GitHub CI 不再依赖本地 SDK 源码路径）。升版时以 nuget.org 实际版本号为准。 -->
+    <PackageReference Include="InkCanvas.PluginSdk" Version="1.7.19.9-gda522a8757" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
