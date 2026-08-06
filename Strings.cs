@@ -24,6 +24,7 @@ namespace AIChat
             ["Chat_Btn_Stop"]         = ("停止", "Stop"),
             ["Chat_Btn_Clear"]        = ("清空对话", "Clear"),
             ["Chat_Btn_Close"]        = ("关闭", "Close"),
+            ["Chat_Btn_Resize"]       = ("拖动调整大小", "Drag to resize"),
             ["Chat_Bubble_Copy"]      = ("复制", "Copy"),
             ["Chat_Bubble_Insert"]    = ("插入画布", "Insert to Canvas"),
             ["Chat_Bubble_Regenerate"]= ("重新生成", "Regenerate"),
@@ -117,6 +118,7 @@ namespace AIChat
         public string BtnSend => Strings.Get("Chat_Btn_Send");
         public string BtnStop => Strings.Get("Chat_Btn_Stop");
         public string BtnClear => Strings.Get("Chat_Btn_Clear");
+        public string BtnResize => Strings.Get("Chat_Btn_Resize");
         public string Title => Strings.Get("Settings_Title");
         public string ProviderListTitle => Strings.Get("Provider_ListTitle");
         public string Provider_Add => Strings.Get("Provider_Add");

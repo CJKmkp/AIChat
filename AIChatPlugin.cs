@@ -421,13 +421,33 @@ namespace AIChat
 
         /// <summary>
         /// 把 AI 回答文本作为可拖动文本元素插入画布。
+        /// <para>
+        /// 盒子固定宽度 + 高度上限，文本放 ScrollViewer 内滚动显示：
+        /// 宿主 CenterAndScaleElement 按画布 70% 缩放并强制 Width/Height 时，
+        /// 长内容在框内滚动而非被截断（纯 Border+TextBlock 会在缩放后底部溢出被切掉）。
+        /// </para>
         /// </summary>
         public void InsertTextToCanvas(string text)
         {
             if (_canvasSvc == null || string.IsNullOrWhiteSpace(text)) return;
             try
             {
-                // 构造一个最大宽度 ~600 的 Border + TextBlock
+                var tb = new TextBlock
+                {
+                    Text = text,
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = 16,
+                    Foreground = System.Windows.Media.Brushes.Black
+                };
+                // 高度上限 320：短文本按内容自适应（ScrollViewer 收缩到内容高），
+                // 长文本固定在 320 高并出现纵向滚动条——任何长度都不截断。
+                var scroll = new ScrollViewer
+                {
+                    Content = tb,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    MaxHeight = 320
+                };
                 var border = new Border
                 {
                     Background = new System.Windows.Media.SolidColorBrush(
@@ -437,17 +457,11 @@ namespace AIChat
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(6),
                     Padding = new Thickness(10, 6, 10, 6),
-                    MaxWidth = 600,
+                    // 固定宽度保证 InkCanvas 无限测量下 TextBlock 稳定换行
+                    Width = 480,
                     MinWidth = 120
                 };
-                var tb = new TextBlock
-                {
-                    Text = text,
-                    TextWrapping = TextWrapping.Wrap,
-                    FontSize = 16,
-                    Foreground = System.Windows.Media.Brushes.Black
-                };
-                border.Child = tb;
+                border.Child = scroll;
                 if (_canvasSvc.InsertElement(border))
                     NotifyInfo(Strings.Get("Info_Inserted"));
                 else

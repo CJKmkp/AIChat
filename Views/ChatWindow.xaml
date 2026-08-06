@@ -16,7 +16,7 @@
         Background="Transparent"
         WindowStyle="None"
         AllowsTransparency="True"
-        ResizeMode="CanResizeWithGrip"
+        ResizeMode="CanResize"
         SnapsToDevicePixels="True"
         UseLayoutRounding="True">
     <!--
@@ -211,6 +211,21 @@
                     </Grid>
                 </Grid>
             </Border>
+            <!-- 右下角缩放柄（自绘）：WindowStyle=None + AllowsTransparency 下系统 grip 落在窗口直角角点、
+                 会溢出圆角；这里放到圆角内右下角，按下走 SC_SIZE + HTBOTTOMRIGHT 系统缩放循环 -->
+            <Path Grid.Row="0" Grid.RowSpan="3"
+                  Data="M1,11 L11,1 M1,7 L7,1 M1,3 L3,1"
+                  Width="12" Height="12"
+                  Stroke="{DynamicResource FloatingBarForegroundBrush}"
+                  StrokeThickness="1.2"
+                  StrokeStartLineCap="Round"
+                  StrokeEndLineCap="Round"
+                  VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                  Margin="0,0,6,6"
+                  Opacity="0.4"
+                  Cursor="SizeNWSE"
+                  PreviewMouseLeftButtonDown="ResizeGrip_PreviewMouseLeftButtonDown"
+                  ToolTip="{Binding BtnResize, Source={x:Static ai:Localized.Current}}"/>
         </Grid>
     </Border>
 </Window>

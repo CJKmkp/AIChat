@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using AIChat.ChatService;
 using Ink_Canvas.Plugins;
@@ -26,6 +28,14 @@ namespace AIChat.Views
         public ObservableCollection<ChatBubbleVm> Messages { get; } = new ObservableCollection<ChatBubbleVm>();
 
         private CancellationTokenSource _cts;
+
+        // 右下角缩放柄用的系统消息（与 WPF 内置 ResizeGrip 同款机制）
+        private const int WmSysCommand = 0x0112;
+        private const int ScSize = 0xF000;
+        private const int HtBottomRight = 17;
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
         public ChatWindow()
         {
