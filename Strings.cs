@@ -67,7 +67,17 @@ namespace AIChat
             ["Settings_ProtocolNote"] = ("Anthropic Claude 协议：使用 x-api-key 与 anthropic-version 头，系统提示词单独作为 system 字段发送。",
                                           "Anthropic Claude protocol uses x-api-key + anthropic-version headers, system prompt sent as separate system field."),
             ["Settings_OpenAiNote"]   = ("OpenAI 兼容协议：Authorization: Bearer + /chat/completions SSE 流式。可搭配 DeepSeek/Kimi/通义/豆包/智谱/Ollama 等。",
-                                          "OpenAI compatible protocol: Authorization Bearer + /chat/completions SSE. Works with DeepSeek/Kimi/Qwen/Doubao/Zhipu/Ollama.")
+                                          "OpenAI compatible protocol: Authorization Bearer + /chat/completions SSE. Works with DeepSeek/Kimi/Qwen/Doubao/Zhipu/Ollama."),
+
+            // 提供商管理（多 provider）
+            ["Provider_ListTitle"]    = ("提供商", "Providers"),
+            ["Provider_Add"]          = ("＋ 添加", "＋ Add"),
+            ["Provider_Delete"]       = ("删除", "Delete"),
+            ["Provider_SelectTemplate"]= ("选择模板", "Choose template"),
+            ["Provider_CantDeleteLast"]= ("至少保留一个提供商", "Keep at least one provider"),
+            ["Provider_ConfirmDelete"]= ("确认删除提供商「{0}」？此操作不可撤销。", "Delete provider \"{0}\"? This cannot be undone."),
+            ["Provider_Added"]        = ("已添加提供商", "Provider added"),
+            ["Provider_Deleted"]      = ("已删除提供商", "Provider deleted")
         };
 
         public static string Get(string key, string lang = "zh")
@@ -107,5 +117,8 @@ namespace AIChat
         public string BtnStop => Strings.Get("Chat_Btn_Stop");
         public string BtnClear => Strings.Get("Chat_Btn_Clear");
         public string Title => Strings.Get("Settings_Title");
+        public string ProviderListTitle => Strings.Get("Provider_ListTitle");
+        public string Provider_Add => Strings.Get("Provider_Add");
+        public string Provider_Delete => Strings.Get("Provider_Delete");
     }
 }

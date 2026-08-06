@@ -35,12 +35,19 @@ namespace AIChat
     }
 
     /// <summary>
-    /// 运行时视图层消息（带渲染状态）。
+    /// 运行时视图层消息（带渲染状态）。属性变化会通知 ChatBubble 重新渲染（支持流式追加）。
     /// </summary>
     public class ChatBubbleVm : System.ComponentModel.INotifyPropertyChanged
     {
         public string Role { get; set; } = "";
-        public string Text { get; set; } = "";
+
+        private string _text = "";
+        public string Text
+        {
+            get => _text;
+            set { _text = value; Raise(nameof(Text)); }
+        }
+
         public bool IsUser => Role == "user";
         public bool IsAssistant => Role == "assistant";
         public bool IsError { get; set; }
@@ -49,16 +56,25 @@ namespace AIChat
         public bool IsStreaming
         {
             get => _isStreaming;
-            set { _isStreaming = value; Raise(); }
+            set { _isStreaming = value; Raise(nameof(IsStreaming)); }
+        }
+
+        private bool _isThinking;
+        /// <summary>AI 正在思考（尚未输出正文）：显示三点动画。</summary>
+        public bool IsThinking
+        {
+            get => _isThinking;
+            set { _isThinking = value; Raise(nameof(IsThinking)); }
         }
 
         public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
-        private void Raise() => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(""));
+        private void Raise(string name = "")
+            => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
 
         public ChatBubbleVm() { }
         public ChatBubbleVm(string role, string text)
         {
-            Role = role; Text = text;
+            Role = role; _text = text ?? "";
         }
     }
 

@@ -23,8 +23,6 @@ namespace AIChat.Views
         public ObservableCollection<ChatBubbleVm> Messages { get; } = new ObservableCollection<ChatBubbleVm>();
 
         private CancellationTokenSource _cts;
-        private ChatBubble _streamingBubble;
-        private ChatBubbleVm _streamingVm;
 
         public ChatWindow()
         {
@@ -32,6 +30,13 @@ namespace AIChat.Views
             MessagesList.ItemsSource = Messages;
             UpdateModelLabel();
             Messages.CollectionChanged += (_, __) => UpdateEmptyState();
+            // 气泡操作按钮以路由事件冒泡到 ItemsControl 统一处理（DataTemplate 内无法用 EventSetter 绑普通 CLR 事件）
+            MessagesList.AddHandler(ChatBubble.CopyRequestedEvent,
+                new EventHandler<ChatBubbleRequestEventArgs>(OnCopy));
+            MessagesList.AddHandler(ChatBubble.InsertToCanvasRequestedEvent,
+                new EventHandler<ChatBubbleRequestEventArgs>(OnInsertToCanvas));
+            MessagesList.AddHandler(ChatBubble.RegenerateRequestedEvent,
+                new EventHandler<ChatBubbleRequestEventArgs>(OnRegenerate));
             InputBox.Focus();
         }
 
@@ -64,21 +69,18 @@ namespace AIChat.Views
         }
 
         /// <summary>
-        /// 刷新左上角模型标签。显示「模型名 @ provider名」。
+        /// 刷新左上角模型标签。显示当前 provider 的「模型名」。
         /// 配置为空时才显示「未配置」。
         /// </summary>
         public void UpdateModelLabel()
         {
-            var cfg = Plugin?.ConfigStore?.Current;
-            if (cfg == null || string.IsNullOrWhiteSpace(cfg.Model))
+            var p = Plugin?.ConfigStore?.GetCurrentProvider();
+            if (p == null || string.IsNullOrWhiteSpace(p.Model))
             {
                 ModelNameText.Text = "未配置";
                 return;
             }
-            var providerName = Plugin?.ConfigStore?.GetCurrentProviderName() ?? "";
-            ModelNameText.Text = string.IsNullOrEmpty(providerName)
-                ? cfg.Model
-                : $"{cfg.Model}";
+            ModelNameText.Text = p.Model;
         }
 
         private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -117,20 +119,13 @@ namespace AIChat.Views
             ScrollToEnd();
         }
 
+        /// <summary>
+        /// 添加一条气泡。渲染完全由 ChatBubble 通过 DataContext + PropertyChanged 驱动，
+        /// 这里只负责把 vm 加进集合，不再手动抓控件实例（LoadContent 会新建临时对象，设置无效）。
+        /// </summary>
         private void AddBubble(ChatBubbleVm vm)
         {
             Messages.Add(vm);
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                if (MessagesList.ItemContainerGenerator.ContainerFromItem(vm) is ContentPresenter cp
-                    && cp.ContentTemplate?.LoadContent() is ChatBubble bubble)
-                {
-                    bubble.CopyRequested += OnCopy;
-                    bubble.InsertToCanvasRequested += OnInsertToCanvas;
-                    bubble.RegenerateRequested += OnRegenerate;
-                    bubble.SetBubble(vm);
-                }
-            }), DispatcherPriority.Background);
         }
 
         private async Task RunChatAsync(string userText)
@@ -158,9 +153,6 @@ namespace AIChat.Views
 
                 var aiVm = new ChatBubbleVm("assistant", "") { IsStreaming = true };
                 AddBubble(aiVm);
-                _streamingVm = aiVm;
-                _streamingBubble = GetLastBubble();
-                _streamingBubble?.SetBubble(aiVm);
                 ScrollToEnd();
 
                 string finalText = "";
@@ -169,7 +161,6 @@ namespace AIChat.Views
                     Dispatcher.Invoke(() =>
                     {
                         aiVm.Text += delta;
-                        _streamingBubble?.AppendText(delta);
                         MessagesScroll.ScrollToEnd();
                     });
                 });
@@ -181,7 +172,7 @@ namespace AIChat.Views
                     {
                         Dispatcher.Invoke(() =>
                         {
-                            _streamingBubble?.SetThinking(thinking);
+                            aiVm.IsThinking = thinking;
                             if (thinking) MessagesScroll.ScrollToEnd();
                         });
                     };
@@ -194,31 +185,35 @@ namespace AIChat.Views
                 catch (ChatHttpException hex)
                 {
                     Plugin?.LogChatFailure("ChatAsync", hex);
+                    aiVm.IsStreaming = false;
+                    aiVm.IsThinking = false;
                     AddAssistantError(string.Format(Strings.Get("Err_HttpStatus"), hex.StatusCode, hex.Message));
                     return;
                 }
                 catch (OperationCanceledException)
                 {
+                    aiVm.IsStreaming = false;
+                    aiVm.IsThinking = false;
                     return;
                 }
                 catch (Exception ex)
                 {
+                    aiVm.IsStreaming = false;
+                    aiVm.IsThinking = false;
                     AddAssistantError(string.Format(Strings.Get("Err_Network"), ex.Message));
                     return;
                 }
 
                 aiVm.Text = finalText;
                 aiVm.IsStreaming = false;
+                aiVm.IsThinking = false;
                 Plugin?.AppendRuntimeHistory(aiVm);
-                _streamingBubble?.FinishStreaming();
                 ScrollToEnd();
             }
             finally
             {
                 _cts?.Dispose();
                 _cts = null;
-                _streamingBubble = null;
-                _streamingVm = null;
                 BtnSend.Visibility = Visibility.Visible;
                 BtnStop.Visibility = Visibility.Collapsed;
             }
@@ -229,16 +224,6 @@ namespace AIChat.Views
             var vm = new ChatBubbleVm("assistant", errText) { IsError = true };
             AddBubble(vm);
             ScrollToEnd();
-        }
-
-        private ChatBubble GetLastBubble()
-        {
-            if (MessagesList.ItemContainerGenerator.ContainerFromIndex(Messages.Count - 1) is ContentPresenter cp)
-            {
-                cp.ApplyTemplate();
-                return cp.ContentTemplate?.LoadContent() as ChatBubble;
-            }
-            return null;
         }
 
         private void ScrollToEnd()
@@ -265,66 +250,49 @@ namespace AIChat.Views
             Hide();
         }
 
-        // ---------- 模型选择下拉（先选 provider，再列该 provider 的 models） ----------
-        // 规则：只显示「已配置好的」provider —— 即该 provider 的 Models 列表非空（已拉取/预设），
-        // 或当前正在用的自定义 provider（baseUrl 非空）。未配置的空预设不显示。
+        // ---------- 模型选择下拉（只列「已配置」providers 及其模型） ----------
+        // 规则：遍历 config 的 Providers（用户添加/保留的才叫已配置），每个 provider 一个分组，
+        // 子菜单列其 Models；点模型即切 provider + 换模型。内置模板不直接列出。
         private void ModelPicker_Click(object sender, MouseButtonEventArgs e)
         {
-            var cfg = Plugin?.ConfigStore?.Current;
-            if (cfg == null) return;
+            var store = Plugin?.ConfigStore;
+            if (store == null) return;
             var menu = new ContextMenu();
+            var current = store.GetCurrentProvider();
 
-            var configuredKeys = new HashSet<string>();
-
-            // 当前自定义 provider（有 baseUrl + model 就算已配置）
-            if (cfg.ProviderKey == "custom" && !string.IsNullOrWhiteSpace(cfg.BaseUrl) && !string.IsNullOrWhiteSpace(cfg.Model))
+            foreach (var p in store.GetAllProviders())
             {
-                configuredKeys.Add("custom");
-            }
-
-            // 遍历内置预设：Models 列表非空 = 已配置
-            foreach (var p in ProviderPresets.Presets)
-            {
-                if (p.Models.Count == 0) continue; // 未配置的空预设不显示
-                configuredKeys.Add(p.Key);
-
+                if (string.IsNullOrWhiteSpace(p.Name)) continue;
                 var providerItem = new MenuItem { Header = p.Name };
-                foreach (var m in p.Models)
+                if (p.Models == null || p.Models.Count == 0)
                 {
-                    var model = m; // capture
-                    var mi = new MenuItem
+                    var noModel = new MenuItem { Header = "（未设置模型）", IsEnabled = false };
+                    providerItem.Items.Add(noModel);
+                }
+                else
+                {
+                    foreach (var m in p.Models)
                     {
-                        Header = (model == cfg.Model && cfg.ProviderKey == p.Key ? "✓ " : "   ") + model,
-                    };
-                    mi.Click += (_, __) =>
-                    {
-                        cfg.ProviderKey = p.Key;
-                        cfg.BaseUrl = p.BaseUrl;
-                        cfg.Model = model;
-                        cfg.Protocol = string.Equals(p.Type, "anthropic", StringComparison.OrdinalIgnoreCase)
-                            ? ProtocolKind.Anthropic
-                            : ProtocolKind.OpenAiCompatible;
-                        Plugin?.ConfigStore?.SaveConfig();
-                        UpdateModelLabel();
-                    };
-                    providerItem.Items.Add(mi);
+                        var model = m; // capture
+                        var isCurrent = current != null && string.Equals(current.Id, p.Id, StringComparison.Ordinal)
+                            && string.Equals(current.Model, model, StringComparison.Ordinal);
+                        var mi = new MenuItem { Header = (isCurrent ? "✓ " : "   ") + model };
+                        mi.Click += (_, __) =>
+                        {
+                            store.SetCurrentProvider(p.Id);
+                            p.Model = model;
+                            try { store.SaveConfig(); } catch { }
+                            UpdateModelLabel();
+                        };
+                        providerItem.Items.Add(mi);
+                    }
                 }
                 menu.Items.Add(providerItem);
             }
 
-            // 自定义 provider（已配置 baseUrl/model）单列
-            if (configuredKeys.Contains("custom"))
+            if (store.GetAllProviders().Count == 0)
             {
-                var customItem = new MenuItem { Header = "自定义" };
-                var mi = new MenuItem { Header = (cfg.Model.Length > 0 ? "✓ " : "   ") + cfg.Model };
-                mi.Click += (_, __) => { /* 已在用，无需切换 */ };
-                customItem.Items.Add(mi);
-                menu.Items.Add(customItem);
-            }
-
-            if (configuredKeys.Count == 0)
-            {
-                var empty = new MenuItem { Header = "尚未配置 AI 服务，请先到设置页填写" };
+                var empty = new MenuItem { Header = "尚未配置 AI 服务，请先到设置页添加" };
                 empty.IsEnabled = false;
                 menu.Items.Add(empty);
             }
@@ -362,24 +330,24 @@ namespace AIChat.Views
             Plugin?.NotifyInfo("还没有可插入的 AI 回答", Ink_Canvas.Plugins.NotificationLevel.Info);
         }
 
-        // ---------- 气泡操作回调 ----------
-        private void OnCopy(string text)
+        // ---------- 气泡操作回调（由 ChatBubble 路由事件触发） ----------
+        private void OnCopy(object sender, ChatBubbleRequestEventArgs e)
         {
             try
             {
-                if (!string.IsNullOrEmpty(text)) Clipboard.SetText(text);
+                if (!string.IsNullOrEmpty(e.Text)) Clipboard.SetText(e.Text);
                 Plugin?.NotifyInfo(Strings.Get("Info_Copied"));
             }
             catch { }
         }
 
-        private void OnInsertToCanvas(string text)
+        private void OnInsertToCanvas(object sender, ChatBubbleRequestEventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(text)) return;
-            Plugin?.InsertTextToCanvas(text);
+            if (string.IsNullOrWhiteSpace(e.Text)) return;
+            Plugin?.InsertTextToCanvas(e.Text);
         }
 
-        private void OnRegenerate()
+        private void OnRegenerate(object sender, ChatBubbleRequestEventArgs e)
         {
             for (int i = Messages.Count - 1; i >= 0; i--)
             {

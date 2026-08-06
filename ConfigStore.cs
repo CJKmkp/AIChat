@@ -13,17 +13,47 @@ namespace AIChat
     }
 
     /// <summary>
-    /// 插件配置：参考 CCSwitch 等业内 AI 客户端标准结构（id/name/type/baseUrl/apiKey/model/models/temperature/maxTokens/systemPrompt）。
+    /// 单个 AI 提供商配置（CCSwitch 标准结构：id/name/type/baseUrl/apiKey/model/models）。
+    /// 存在 <see cref="PluginConfig.Providers"/> 列表中，可任意添加/修改/删除。
+    /// </summary>
+    public class ProviderConfig
+    {
+        /// <summary>唯一标识（新增时 Guid，配置内稳定）。</summary>
+        public string Id { get; set; } = Guid.NewGuid().ToString("N");
+        /// <summary>内置模板 key（deepseek/claude/...）；自定义模板为空串。</summary>
+        public string Key { get; set; } = "";
+        /// <summary>显示名称。</summary>
+        public string Name { get; set; } = "";
+        /// <summary>协议类型：openai-compatible | anthropic。</summary>
+        public string Type { get; set; } = "openai-compatible";
+        /// <summary>API 端点。</summary>
+        public string BaseUrl { get; set; } = "";
+        /// <summary>DPAPI 加密后的 API Key（Base64）。</summary>
+        public string ApiKeyCipher { get; set; } = "";
+        /// <summary>该 provider 当前选中的模型。</summary>
+        public string Model { get; set; } = "";
+        /// <summary>可用模型列表。</summary>
+        public List<string> Models { get; set; } = new();
+
+        public bool IsAnthropic =>
+            string.Equals(Type, "anthropic", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>列表 UI 用的协议徽标文字（不序列化）。</summary>
+        [JsonIgnore]
+        public string TypeLabel => IsAnthropic ? "Claude" : "OpenAI";
+    }
+
+    /// <summary>
+    /// 插件配置：providers 列表 + 当前选中（CCSwitch 风格）+ 全局设置。
     /// JSON 持久化到 PluginConfigFolder/config.json；API Key 走 DPAPI 加密存密文。
     /// </summary>
     public class PluginConfig
     {
-        /// <summary>当前 provider 标识（对应 <see cref="ProviderPresets.Presets"/> 的 key，如 "deepseek"/"claude"）。</summary>
-        public string ProviderKey { get; set; } = "deepseek";
-        public ProtocolKind Protocol { get; set; } = ProtocolKind.OpenAiCompatible;
+        /// <summary>全部已配置的提供商。</summary>
+        public List<ProviderConfig> Providers { get; set; } = new();
+        /// <summary>当前 provider 的 <see cref="ProviderConfig.Id"/>。</summary>
+        public string CurrentProviderId { get; set; } = "";
 
-        public string BaseUrl { get; set; } = "https://api.deepseek.com/v1";
-        public string Model { get; set; } = "deepseek-chat";
         public string SystemPrompt { get; set; } = "你是一名教学助手，回答简洁清晰，使用中文。";
         public double Temperature { get; set; } = 0;
         /// <summary>
@@ -32,19 +62,16 @@ namespace AIChat
         /// </summary>
         public int MaxTokens { get; set; } = 0;
 
-        /// <summary>DPAPI 加密后的 API Key 字节（Base64 字符串保存）。</summary>
-        public string ApiKeyCipher { get; set; } = "";
-
         public ButtonPositionState ButtonPosition { get; set; } = new ButtonPositionState();
         public PersistedSession History { get; set; } = new PersistedSession();
     }
 
     /// <summary>
-    /// 单个 AI 提供商预设（标准结构）。
+    /// 单个内置 provider 模板（标准结构）。
     /// </summary>
     public class ProviderPreset
     {
-        /// <summary>唯一 key（小写英文短码），对应 PluginConfig.ProviderKey。</summary>
+        /// <summary>唯一 key（小写英文短码），对应添加 provider 时的模板。</summary>
         public string Key { get; set; } = "";
         /// <summary>显示名称。</summary>
         public string Name { get; set; } = "";
@@ -57,7 +84,8 @@ namespace AIChat
     }
 
     /// <summary>
-    /// 内置 provider 预设集合（标准 CCSwitch 风格）。key 为 provider 标识。
+    /// 内置 provider 模板集合（CCSwitch 风格）。仅作为「添加 provider」时的模板，
+    /// 不再承担「当前 provider」职责。key 为模板标识。
     /// </summary>
     public static class ProviderPresets
     {
@@ -206,16 +234,76 @@ namespace AIChat
                     var cfg = JsonSerializer.Deserialize<PluginConfig>(json, JsonOpts);
                     if (cfg != null) Current = cfg;
                 }
-                // 旧版本兼容：迁移旧的 ProtocolKind / Preset 字段
-                if (string.IsNullOrEmpty(Current.ProviderKey))
-                {
-                    Current.ProviderKey = "deepseek";
-                }
+                // 旧版本（单 provider 顶层字段）迁移：providers 为空时用旧字段构造一个
+                EnsureMigrated(_configPath);
+                EnsureCurrentProvider();
             }
             catch
             {
                 Current = new PluginConfig();
+                EnsureCurrentProvider();
             }
+        }
+
+        /// <summary>
+        /// 旧版本迁移：新结构 providers 为空，但旧配置顶层有 providerKey/baseUrl/model/apiKeyCipher 时，
+        /// 用这些字段构造一个 provider（不丢用户已有的 key / 地址）。
+        /// </summary>
+        private void EnsureMigrated(string configPath)
+        {
+            if (Current.Providers.Count > 0) return;
+            try
+            {
+                if (!File.Exists(configPath)) return;
+                using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
+                var root = doc.RootElement;
+                if (!root.TryGetProperty("providers", out _) &&
+                    (root.TryGetProperty("baseUrl", out var oldBase) || root.TryGetProperty("providerKey", out _)))
+                {
+                    var key = root.TryGetProperty("providerKey", out var k) ? k.GetString() : "";
+                    var type = root.TryGetProperty("protocol", out var proto) && proto.GetInt32() == 1
+                        ? "anthropic" : "openai-compatible";
+                    var name = "自定义";
+                    var preset = ProviderPresets.FindByKey(key);
+                    if (preset != null) name = preset.Name;
+                    var provider = new ProviderConfig
+                    {
+                        Key = key,
+                        Name = name,
+                        Type = type,
+                        BaseUrl = root.TryGetProperty("baseUrl", out var b) ? b.GetString() ?? "" : "",
+                        Model = root.TryGetProperty("model", out var m) ? m.GetString() ?? "" : "",
+                        ApiKeyCipher = root.TryGetProperty("apiKeyCipher", out var a) ? a.GetString() ?? "" : ""
+                    };
+                    if (preset != null) provider.Models = new List<string>(preset.Models);
+                    Current.Providers.Add(provider);
+                    Current.CurrentProviderId = provider.Id;
+                }
+            }
+            catch { /* 迁移失败则走 EnsureCurrentProvider 兜底 */ }
+        }
+
+        /// <summary>确保至少存在一个 provider，且当前 id 指向有效项。</summary>
+        private void EnsureCurrentProvider()
+        {
+            if (Current.Providers == null) Current.Providers = new List<ProviderConfig>();
+            if (Current.Providers.Count == 0)
+            {
+                // 全新配置：默认 DeepSeek
+                var preset = ProviderPresets.FindByKey("deepseek");
+                Current.Providers.Add(new ProviderConfig
+                {
+                    Key = "deepseek",
+                    Name = preset?.Name ?? "DeepSeek",
+                    Type = preset?.Type ?? "openai-compatible",
+                    BaseUrl = preset?.BaseUrl ?? "https://api.deepseek.com/v1",
+                    Model = preset?.Models.Count > 0 ? preset.Models[0] : "deepseek-chat",
+                    Models = preset != null ? new List<string>(preset.Models) : new List<string>()
+                });
+            }
+            // 当前 id 无效 → 指向第一个
+            if (FindById(Current.CurrentProviderId) == null)
+                Current.CurrentProviderId = Current.Providers[0].Id;
         }
 
         public void SaveConfig()
@@ -258,12 +346,85 @@ namespace AIChat
             catch { }
         }
 
+        // ---------- Provider 管理 ----------
+
+        public List<ProviderConfig> GetAllProviders()
+        {
+            EnsureCurrentProvider();
+            return Current.Providers;
+        }
+
+        public ProviderConfig GetCurrentProvider()
+        {
+            EnsureCurrentProvider();
+            return FindById(Current.CurrentProviderId) ?? Current.Providers[0];
+        }
+
+        public ProviderConfig FindById(string id)
+        {
+            if (Current.Providers == null || string.IsNullOrEmpty(id)) return null;
+            foreach (var p in Current.Providers)
+            {
+                if (string.Equals(p.Id, id, StringComparison.Ordinal)) return p;
+            }
+            return null;
+        }
+
+        public void SetCurrentProvider(string id)
+        {
+            EnsureCurrentProvider();
+            if (FindById(id) != null) Current.CurrentProviderId = id;
+        }
+
+        /// <summary>
+        /// 新增一个 provider（以内置模板填充 baseUrl/type/models/默认名），自动设为当前。
+        /// 空列表时该 provider 即为唯一一个（不额外预创建默认）。
+        /// </summary>
+        public ProviderConfig AddProvider(string templateKey)
+        {
+            if (Current.Providers == null) Current.Providers = new List<ProviderConfig>();
+            var preset = ProviderPresets.FindByKey(templateKey);
+            var provider = new ProviderConfig
+            {
+                Key = templateKey,
+                Name = preset?.Name ?? "自定义",
+                Type = preset?.Type ?? "openai-compatible",
+                BaseUrl = preset?.BaseUrl ?? "",
+                Model = preset != null && preset.Models.Count > 0 ? preset.Models[0] : "",
+                Models = preset != null ? new List<string>(preset.Models) : new List<string>()
+            };
+            Current.Providers.Add(provider);
+            Current.CurrentProviderId = provider.Id;
+            return provider;
+        }
+
+        /// <summary>删除 provider；至少保留一个，删除后当前 id 落到剩余第一个。</summary>
+        public void RemoveProvider(string id)
+        {
+            if (Current.Providers == null) return;
+            var idx = Current.Providers.FindIndex(p => string.Equals(p.Id, id, StringComparison.Ordinal));
+            if (idx < 0) return;
+            Current.Providers.RemoveAt(idx);
+            if (Current.Providers.Count == 0)
+            {
+                EnsureCurrentProvider(); // 补回默认
+            }
+            else if (string.Equals(Current.CurrentProviderId, id, StringComparison.Ordinal))
+            {
+                Current.CurrentProviderId = Current.Providers[0].Id;
+            }
+        }
+
+        // ---------- 便捷 API（读写当前 provider） ----------
+
+        /// <summary>当前 provider 的明文 API Key（解密）。</summary>
         public string GetApiKeyPlain()
         {
-            if (string.IsNullOrEmpty(Current.ApiKeyCipher)) return "";
+            var p = GetCurrentProvider();
+            if (p == null || string.IsNullOrEmpty(p.ApiKeyCipher)) return "";
             try
             {
-                var bytes = Convert.FromBase64String(Current.ApiKeyCipher);
+                var bytes = Convert.FromBase64String(p.ApiKeyCipher);
                 return SecretStore.TryUnprotect(bytes);
             }
             catch
@@ -272,52 +433,53 @@ namespace AIChat
             }
         }
 
+        /// <summary>写入当前 provider 的 API Key（加密）。</summary>
         public void SetApiKeyPlain(string plain)
         {
+            var p = GetCurrentProvider();
+            if (p == null) return;
             if (string.IsNullOrEmpty(plain))
             {
-                Current.ApiKeyCipher = "";
+                p.ApiKeyCipher = "";
                 return;
             }
             var cipher = SecretStore.ProtectString(plain);
-            Current.ApiKeyCipher = Convert.ToBase64String(cipher);
+            p.ApiKeyCipher = Convert.ToBase64String(cipher);
+        }
+
+        /// <summary>当前 provider 的可用模型列表。</summary>
+        public List<string> GetCurrentModels()
+        {
+            var p = GetCurrentProvider();
+            return p == null ? new List<string>() : new List<string>(p.Models);
+        }
+
+        /// <summary>当前 provider 的显示名。找不到时回退「自定义」。</summary>
+        public string GetCurrentProviderName()
+        {
+            var p = GetCurrentProvider();
+            return string.IsNullOrWhiteSpace(p?.Name) ? "自定义" : p.Name;
         }
 
         /// <summary>
-        /// 应用 provider 预设：填入 BaseUrl、协议、默认模型。不清空 API Key。
+        /// 用内置模板填充当前 provider 的 BaseUrl/Type/Models（不清空 API Key 与模型）。
         /// </summary>
         public void ApplyProvider(string key)
         {
             var preset = ProviderPresets.FindByKey(key);
             if (preset == null) return;
-            Current.ProviderKey = preset.Key;
-            Current.BaseUrl = preset.BaseUrl;
-            Current.Protocol = string.Equals(preset.Type, "anthropic", StringComparison.OrdinalIgnoreCase)
-                ? ProtocolKind.Anthropic
-                : ProtocolKind.OpenAiCompatible;
-            // 切换 provider 时，如果当前 Model 不在新 provider 的模型列表里，则切到 provider 的第一个模型
+            var p = GetCurrentProvider();
+            if (p == null) return;
+            p.Key = preset.Key;
+            p.Name = preset.Name;
+            p.Type = preset.Type;
+            p.BaseUrl = preset.BaseUrl;
+            // 切换模板时，如果当前 Model 不在新列表里则切到第一个
             if (preset.Models.Count > 0)
             {
-                if (!preset.Models.Contains(Current.Model))
-                {
-                    Current.Model = preset.Models[0];
-                }
+                p.Models = new List<string>(preset.Models);
+                if (!preset.Models.Contains(p.Model)) p.Model = preset.Models[0];
             }
-        }
-
-        /// <summary>当前 provider 的可用模型列表（用于设置页/聊天窗模型下拉）。</summary>
-        public List<string> GetCurrentModels()
-        {
-            var preset = ProviderPresets.FindByKey(Current.ProviderKey);
-            if (preset == null) return new List<string>();
-            return new List<string>(preset.Models);
-        }
-
-        /// <summary>当前 provider 的显示名。找不到时回退 BaseUrl。</summary>
-        public string GetCurrentProviderName()
-        {
-            var preset = ProviderPresets.FindByKey(Current.ProviderKey);
-            return preset?.Name ?? "自定义";
         }
     }
 }

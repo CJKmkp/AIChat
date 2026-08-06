@@ -9,65 +9,139 @@ using AIChat.ChatService;
 namespace AIChat.Views
 {
     /// <summary>
-    /// 插件设置页：协议 / Provider / 接口地址 / API Key / 模型（含拉取列表）/ 系统提示词 / 测试连接。
-    /// 参考 CCSwitch 标准接口：provider 预设 + baseUrl + apiKey + models。
+    /// 插件设置页（master-detail 双栏）：左侧提供商列表（添加/删除/切换），
+    /// 右侧编辑选中提供商的 名称/协议/地址/API Key/模型，底部为全局设置（系统提示词/温度/MaxTokens）。
+    /// 表单直接编辑选中的 <see cref="ProviderConfig"/> 对象，「保存」统一落盘。
     /// </summary>
     public partial class SettingsView : UserControl
     {
         public ConfigStore Config { get; set; }
         public Action<string, Ink_Canvas.Plugins.NotificationLevel> Notify { get; set; }
         public Func<Task<List<string>>> ListModelsAsync { get; set; }
-        /// <summary>测试连接：返回 (是否成功, 结果/错误信息)。</summary>
-        public Func<string, ProtocolKind, string, Task<(bool, string)>> TestConnectionAsync { get; set; }
+        /// <summary>测试连接：入参为当前编辑的 provider，返回 (是否成功, 结果/错误信息)。</summary>
+        public Func<ProviderConfig, Task<(bool, string)>> TestConnectionAsync { get; set; }
 
-        private bool _keyShown;
         private bool _loading;
+        private bool _keyShown;
 
         public SettingsView()
         {
             InitializeComponent();
-            LoadProviders();
             if (Config != null) LoadFromConfig();
-        }
-
-        private void LoadProviders()
-        {
-            ProviderCombo.Items.Clear();
-            foreach (var p in ProviderPresets.Presets)
-            {
-                var item = new ComboBoxItem { Content = p.Name, Tag = p.Key };
-                ProviderCombo.Items.Add(item);
-            }
         }
 
         private void LoadFromConfig()
         {
+            RefreshProviderList();
+            // 显式加载表单（RefreshProviderList 里 SelectedItem 变化可能被 _loading guard 跳过）
+            LoadForm(ProviderList.SelectedItem as ProviderConfig ?? Config.GetCurrentProvider());
+            UpdateDeleteButton();
+        }
+
+        // ---------- 左列：提供商列表 ----------
+
+        private void RefreshProviderList(string selectId = null)
+        {
+            ProviderList.ItemsSource = null;
+            var list = Config.GetAllProviders();
+            ProviderList.ItemsSource = list;
+            ProviderConfig target = null;
+            if (selectId != null)
+            {
+                foreach (var p in list)
+                {
+                    if (string.Equals(p.Id, selectId, StringComparison.Ordinal)) { target = p; break; }
+                }
+            }
+            if (target == null && ProviderList.SelectedItem is ProviderConfig cur) target = cur;
+            if (target == null) target = Config.GetCurrentProvider();
+            ProviderList.SelectedItem = target;
+            UpdateDeleteButton();
+        }
+
+        private void ProviderList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_loading) return;
+            if (ProviderList.SelectedItem is ProviderConfig p)
+            {
+                Config.SetCurrentProvider(p.Id);
+                LoadForm(p);
+                UpdateDeleteButton();
+            }
+        }
+
+        private void UpdateDeleteButton()
+        {
+            BtnDeleteProvider.IsEnabled = Config.GetAllProviders().Count > 1;
+        }
+
+        private void BtnAddProvider_Click(object sender, RoutedEventArgs e)
+        {
+            var menu = new ContextMenu();
+            foreach (var preset in ProviderPresets.Presets)
+            {
+                var mi = new MenuItem { Header = preset.Name, Tag = preset.Key };
+                mi.Click += (_, __) => AddProviderFromTemplate(preset.Key);
+                menu.Items.Add(mi);
+            }
+            menu.PlacementTarget = (FrameworkElement)sender;
+            menu.IsOpen = true;
+        }
+
+        private void AddProviderFromTemplate(string templateKey)
+        {
+            var provider = Config.AddProvider(templateKey);
+            RefreshProviderList(provider.Id);
+            LoadForm(provider);
+            Notify?.Invoke("已添加提供商", Ink_Canvas.Plugins.NotificationLevel.Success);
+        }
+
+        private void BtnDeleteProvider_Click(object sender, RoutedEventArgs e)
+        {
+            var p = ProviderList.SelectedItem as ProviderConfig ?? Config.GetCurrentProvider();
+            if (p == null) return;
+            if (Config.GetAllProviders().Count <= 1)
+            {
+                StatusText.Text = Strings.Get("Provider_CantDeleteLast");
+                Notify?.Invoke(Strings.Get("Provider_CantDeleteLast"), Ink_Canvas.Plugins.NotificationLevel.Warning);
+                return;
+            }
+            var msg = string.Format(Strings.Get("Provider_ConfirmDelete"), p.Name);
+            var r = MessageBox.Show(msg, Strings.Get("Provider_Delete"),
+                MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+            if (r != MessageBoxResult.OK) return;
+            Config.RemoveProvider(p.Id);
+            RefreshProviderList();
+            LoadForm(ProviderList.SelectedItem as ProviderConfig ?? Config.GetCurrentProvider());
+            Notify?.Invoke("已删除提供商", Ink_Canvas.Plugins.NotificationLevel.Success);
+        }
+
+        // ---------- 右列：编辑表单 ----------
+
+        private void LoadForm(ProviderConfig p)
+        {
+            if (p == null) return;
             _loading = true;
             try
             {
-                // 协议
-                SelectComboByTag(ProtocolCombo,
-                    Config.Current.Protocol == ProtocolKind.Anthropic ? "anthropic" : "openai");
-                UpdateProtocolNote();
-                // Provider
-                SelectComboByTag(ProviderCombo, Config.Current.ProviderKey);
-                BaseUrlBox.Text = Config.Current.BaseUrl;
-                ModelBox.Text = Config.Current.Model;
+                NameBox.Text = p.Name;
+                SelectComboByTag(TypeCombo, p.IsAnthropic ? "anthropic" : "openai");
+                UpdateTypeNote();
+                BaseUrlBox.Text = p.BaseUrl;
+                ModelBox.Text = p.Model;
+                RefreshModelDropdown(p.Models ?? new List<string>(), p.Model);
+                // 全局
                 SystemPromptBox.Text = Config.Current.SystemPrompt;
                 TemperatureBox.Text = Config.Current.Temperature > 0 ? Config.Current.Temperature.ToString() : "";
                 MaxTokensBox.Text = Config.Current.MaxTokens > 0 ? Config.Current.MaxTokens.ToString() : "";
                 // API Key
                 var keyPlain = Config.GetApiKeyPlain();
-                if (string.IsNullOrEmpty(keyPlain))
-                {
-                    ApiKeyBox.Password = "";
-                    ApiKeyPlainBox.Text = "";
-                }
-                else
-                {
-                    ApiKeyBox.Password = new string('*', Math.Min(16, keyPlain.Length));
-                    ApiKeyPlainBox.Text = keyPlain;
-                }
+                ApiKeyBox.Password = string.IsNullOrEmpty(keyPlain) ? "" : new string('*', Math.Min(16, keyPlain.Length));
+                ApiKeyPlainBox.Text = keyPlain;
+                _keyShown = false;
+                ApiKeyPlainBox.Visibility = Visibility.Collapsed;
+                ApiKeyBox.Visibility = Visibility.Visible;
+                BtnToggleKey.Content = Strings.Get("Settings_ShowKey");
             }
             finally { _loading = false; }
         }
@@ -84,36 +158,27 @@ namespace AIChat.Views
             }
         }
 
-        private void ProtocolCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private static string GetSelectedTag(ComboBox combo)
+            => (combo.SelectedItem as ComboBoxItem)?.Tag as string ?? "";
+
+        private void TypeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_loading) return;
-            UpdateProtocolNote();
+            UpdateTypeNote();
+            // 同步写回选中 provider 的 Type（对象是引用，天然回写；保存时统一落盘）
+            if (ProviderList.SelectedItem is ProviderConfig p)
+            {
+                p.Type = string.Equals(GetSelectedTag(TypeCombo), "anthropic", StringComparison.OrdinalIgnoreCase)
+                    ? "anthropic" : "openai-compatible";
+            }
         }
 
-        private void UpdateProtocolNote()
+        private void UpdateTypeNote()
         {
-            var isAnthropic = ProtocolCombo.SelectedItem is ComboBoxItem item
-                && string.Equals(item.Tag as string, "anthropic", StringComparison.OrdinalIgnoreCase);
-            ProtocolNote.Text = isAnthropic ? Strings.Get("Settings_ProtocolNote") : Strings.Get("Settings_OpenAiNote");
+            var isAnthropic = string.Equals(GetSelectedTag(TypeCombo), "anthropic", StringComparison.OrdinalIgnoreCase);
+            TypeNote.Text = isAnthropic ? Strings.Get("Settings_ProtocolNote") : Strings.Get("Settings_OpenAiNote");
             if (isAnthropic && string.IsNullOrEmpty(ModelBox.Text))
                 ModelBox.Text = "claude-haiku-4-5";
-        }
-
-        private void ProviderCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (_loading || ProviderCombo.SelectedItem == null) return;
-            if (ProviderCombo.SelectedItem is ComboBoxItem item
-                && item.Tag is string key)
-            {
-                var preset = ProviderPresets.FindByKey(key);
-                if (preset == null) return;
-                if (preset.BaseUrl.Length > 0) BaseUrlBox.Text = preset.BaseUrl;
-                if (preset.Models.Count > 0 && string.IsNullOrEmpty(ModelBox.Text))
-                    ModelBox.Text = preset.Models[0];
-                var isAnthropic = string.Equals(preset.Type, "anthropic", StringComparison.OrdinalIgnoreCase);
-                SelectComboByTag(ProtocolCombo, isAnthropic ? "anthropic" : "openai");
-                UpdateProtocolNote();
-            }
         }
 
         private void BtnToggleKey_Click(object sender, RoutedEventArgs e)
@@ -147,14 +212,10 @@ namespace AIChat.Views
                     StatusText.Text = "未获取到模型（该端点可能不支持 /models）";
                     return;
                 }
-                // 更新 provider 预设的模型列表（不覆盖用户当前选择的模型）
-                var preset = ProviderPresets.FindByKey(Config.Current.ProviderKey);
-                if (preset != null && Config.Current.ProviderKey != "custom")
-                {
-                    preset.Models.Clear();
-                    preset.Models.AddRange(models);
-                }
-                RefreshModelDropdown(models);
+                // 写入当前 provider 的 Models（不再改内置预设）
+                var p = ProviderList.SelectedItem as ProviderConfig ?? Config.GetCurrentProvider();
+                p.Models = models;
+                RefreshModelDropdown(models, p.Model);
                 StatusText.Text = $"已获取 {models.Count} 个模型，从下拉中选择";
                 Notify?.Invoke($"已获取 {models.Count} 个模型", Ink_Canvas.Plugins.NotificationLevel.Success);
             }
@@ -165,18 +226,15 @@ namespace AIChat.Views
             }
         }
 
-        /// <summary>
-        /// 把模型列表填充到 ModelCombo 下拉（可选模型），不覆盖当前 ModelBox 文本。
-        /// </summary>
-        private void RefreshModelDropdown(List<string> models)
+        /// <summary>把模型列表填充到 ModelCombo 下拉（可选模型），不覆盖当前 ModelBox 文本。</summary>
+        private void RefreshModelDropdown(List<string> models, string currentModel)
         {
             ModelCombo.Items.Clear();
             foreach (var m in models)
             {
                 ModelCombo.Items.Add(new ComboBoxItem { Content = m, Tag = m });
             }
-            // 当前模型若在列表中则选中
-            var cur = ModelBox.Text?.Trim() ?? "";
+            var cur = currentModel?.Trim() ?? "";
             foreach (ComboBoxItem item in ModelCombo.Items)
             {
                 if (string.Equals(item.Tag as string, cur, StringComparison.OrdinalIgnoreCase))
@@ -197,54 +255,32 @@ namespace AIChat.Views
             }
         }
 
+        /// <summary>
+        /// 把右列表单（含 API Key）写回选中的 provider 对象，不落盘。
+        /// 返回 false 表示必填缺失（已显示提示）。
+        /// </summary>
         public bool SaveToConfig()
         {
             if (Config == null) return false;
-            // 协议
-            if (ProtocolCombo.SelectedItem is ComboBoxItem pi)
-                Config.Current.Protocol = string.Equals(pi.Tag as string, "anthropic", StringComparison.OrdinalIgnoreCase)
-                    ? ProtocolKind.Anthropic : ProtocolKind.OpenAiCompatible;
-            // Provider
-            if (ProviderCombo.SelectedItem is ComboBoxItem pri && pri.Tag is string key)
-            {
-                Config.Current.ProviderKey = key;
-                var preset = ProviderPresets.FindByKey(key);
-                if (preset != null && key != "custom")
-                {
-                    if (preset.BaseUrl.Length > 0) Config.Current.BaseUrl = preset.BaseUrl;
-                    Config.Current.Protocol = string.Equals(preset.Type, "anthropic", StringComparison.OrdinalIgnoreCase)
-                        ? ProtocolKind.Anthropic : ProtocolKind.OpenAiCompatible;
-                }
-            }
-            // BaseUrl / Model
-            Config.Current.BaseUrl = (BaseUrlBox.Text ?? "").Trim();
+            var p = ProviderList.SelectedItem as ProviderConfig ?? Config.GetCurrentProvider();
+            if (p == null) return false;
+            p.Name = (NameBox.Text ?? "").Trim();
+            p.Type = string.Equals(GetSelectedTag(TypeCombo), "anthropic", StringComparison.OrdinalIgnoreCase)
+                ? "anthropic" : "openai-compatible";
+            p.BaseUrl = (BaseUrlBox.Text ?? "").Trim();
             var modelText = (ModelBox.Text ?? "").Trim();
-            // Model 为空时，优先用 provider 预设的第一个模型，避免空 model 导致拉取/测试失败
-            if (string.IsNullOrEmpty(modelText))
+            // Model 为空时，优先用该 provider 的第一个模型，避免空 model 导致拉取/测试失败
+            if (string.IsNullOrEmpty(modelText) && p.Models.Count > 0)
             {
-                var preset = ProviderPresets.FindByKey(Config.Current.ProviderKey);
-                if (preset != null && preset.Models.Count > 0)
-                {
-                    modelText = preset.Models[0];
-                    ModelBox.Text = modelText;
-                }
+                modelText = p.Models[0];
+                ModelBox.Text = modelText;
             }
-            Config.Current.Model = modelText;
-            Config.Current.SystemPrompt = (SystemPromptBox.Text ?? "").Trim();
-            // 温度
-            if (double.TryParse(TemperatureBox.Text, out var t) && t >= 0 && t <= 2)
-                Config.Current.Temperature = t;
-            else Config.Current.Temperature = 0;
-            // MaxTokens：空或 0 表示不发送（服务端用默认值）
-            if (int.TryParse(MaxTokensBox.Text, out var mt) && mt > 0 && mt <= 1048576)
-                Config.Current.MaxTokens = mt;
-            else
-                Config.Current.MaxTokens = 0;
+            p.Model = modelText;
             // API Key
             string newKey = _keyShown ? ApiKeyPlainBox.Text : (ApiKeyBox.Password ?? "");
             if (string.IsNullOrEmpty(newKey) || newKey.All(c => c == '*'))
             {
-                if (Config.GetApiKeyPlain().Length == 0)
+                if (string.IsNullOrEmpty(p.ApiKeyCipher))
                 {
                     StatusText.Text = "请填写 API Key";
                     return false;
@@ -252,8 +288,17 @@ namespace AIChat.Views
             }
             else
             {
-                Config.SetApiKeyPlain(newKey);
+                p.ApiKeyCipher = Convert.ToBase64String(SecretStore.ProtectString(newKey));
             }
+            // 全局
+            Config.Current.SystemPrompt = (SystemPromptBox.Text ?? "").Trim();
+            if (double.TryParse(TemperatureBox.Text, out var t) && t >= 0 && t <= 2)
+                Config.Current.Temperature = t;
+            else Config.Current.Temperature = 0;
+            if (int.TryParse(MaxTokensBox.Text, out var mt) && mt > 0 && mt <= 1048576)
+                Config.Current.MaxTokens = mt;
+            else
+                Config.Current.MaxTokens = 0;
             return true;
         }
 
@@ -294,7 +339,7 @@ namespace AIChat.Views
             }
         }
 
-        private async void BtnSave_Click(object sender, RoutedEventArgs e)
+        private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
             if (SaveToConfig())
             {
@@ -316,9 +361,7 @@ namespace AIChat.Views
                 if (TestConnectionAsync != null)
                 {
                     (pass, message) = await TestConnectionAsync(
-                        Config.GetApiKeyPlain(),
-                        Config.Current.Protocol,
-                        Config.Current.BaseUrl);
+                        ProviderList.SelectedItem as ProviderConfig ?? Config.GetCurrentProvider());
                 }
                 if (pass)
                 {

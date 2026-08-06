@@ -9,17 +9,82 @@
              xmlns:sys="clr-namespace:System;assembly=mscorlib"
              xmlns:ai="clr-namespace:AIChat"
              mc:Ignorable="d"
-             d:DesignHeight="760" d:DesignWidth="680">
+             d:DesignHeight="760" d:DesignWidth="900">
     <!--
         注意：宿主 PluginSettingsPage 外层已包 ScrollViewer(PanningMode=VerticalFirst)，
-        这里不要再包 ScrollViewer，否则嵌套滚动条会导致全页滚动失效。
-        滚动由宿主页面统一处理。
+        这里不要再包 ScrollViewer，否则嵌套滚动条会导致全页滚动失效。滚动由宿主页面统一处理。
+
+        双栏 master-detail：左列 = 提供商列表（可增删切换）；右列 = 编辑选中 provider 的表单。
     -->
     <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="248"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
         <FrameworkElement.Resources>
             <sys:Double x:Key="SettingsCardSpacing">6</sys:Double>
         </FrameworkElement.Resources>
-        <ikw:SimpleStackPanel MaxWidth="920"
+
+        <!-- ================= 左列：提供商列表 + 增删 ================= -->
+        <Grid Grid.Column="0" Margin="0,0,10,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0"
+                       Text="{Binding ProviderListTitle, Source={x:Static ai:Localized.Current}}"
+                       FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource FloatingBarForegroundBrush}"
+                       Margin="4,0,0,8"/>
+
+            <Border Grid.Row="1"
+                    Background="#14FFFFFF"
+                    BorderBrush="{DynamicResource FloatingBarBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="4">
+                <ListBox x:Name="ProviderList"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         SelectionChanged="ProviderList_SelectionChanged"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="8,6">
+                                <TextBlock Text="{Binding Name}"
+                                           FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource FloatingBarForegroundBrush}"/>
+                                <TextBlock Text="{Binding TypeLabel}"
+                                           FontSize="11"
+                                           Foreground="#88FFFFFF"
+                                           Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <ikw:SimpleStackPanel Grid.Row="2"
+                                  Orientation="Horizontal"
+                                  Spacing="8"
+                                  Margin="0,10,0,0">
+                <Button x:Name="BtnAddProvider"
+                        Content="{Binding Provider_Add, Source={x:Static ai:Localized.Current}}"
+                        MinWidth="96" MinHeight="34"
+                        Click="BtnAddProvider_Click"/>
+                <Button x:Name="BtnDeleteProvider"
+                        Content="{Binding Provider_Delete, Source={x:Static ai:Localized.Current}}"
+                        MinWidth="76" MinHeight="34"
+                        Click="BtnDeleteProvider_Click"/>
+            </ikw:SimpleStackPanel>
+        </Grid>
+
+        <!-- ================= 右列：编辑表单 ================= -->
+        <ikw:SimpleStackPanel Grid.Column="1"
+                              MaxWidth="920"
                               HorizontalAlignment="Stretch"
                               Spacing="{StaticResource SettingsCardSpacing}">
 
@@ -27,33 +92,32 @@
                         IsClosable="False"
                         Severity="Informational"
                         Title="AI 助手设置"
-                        Message="在 AI 提供商处申请 Key 后填入。API Key 仅本地保存，并用 DPAPI 加密。"/>
+                        Message="在左侧添加/切换提供商，右侧填写该提供商的接口配置。API Key 仅本地保存，并用 DPAPI 加密。"/>
+
+            <ui:SettingsCard Header="名称">
+                <ui:SettingsCard.HeaderIcon>
+                    <ui:FontIcon Glyph="&#xE7F1;"/>
+                </ui:SettingsCard.HeaderIcon>
+                <TextBox x:Name="NameBox" MinWidth="300" MaxLength="64"
+                         VerticalContentAlignment="Center"/>
+            </ui:SettingsCard>
 
             <ui:SettingsCard Header="接口协议">
                 <ui:SettingsCard.HeaderIcon>
                     <ui:FontIcon Glyph="&#xE8F5;"/>
                 </ui:SettingsCard.HeaderIcon>
-                <ComboBox x:Name="ProtocolCombo" MinWidth="220"
-                          SelectionChanged="ProtocolCombo_SelectionChanged">
+                <ComboBox x:Name="TypeCombo" MinWidth="220"
+                          SelectionChanged="TypeCombo_SelectionChanged">
                     <ComboBoxItem Content="OpenAI 兼容" Tag="openai"/>
                     <ComboBoxItem Content="Anthropic Claude" Tag="anthropic"/>
                 </ComboBox>
             </ui:SettingsCard>
 
-            <TextBlock x:Name="ProtocolNote"
+            <TextBlock x:Name="TypeNote"
                        Foreground="Gray"
                        FontSize="12"
                        TextWrapping="Wrap"
                        Margin="52,0,0,0"/>
-
-            <ui:SettingsCard Header="AI 提供商"
-                              Description="选择预设后自动填入接口地址与协议">
-                <ui:SettingsCard.HeaderIcon>
-                    <ui:FontIcon Glyph="&#xE7BF;"/>
-                </ui:SettingsCard.HeaderIcon>
-                <ComboBox x:Name="ProviderCombo" MinWidth="260"
-                          SelectionChanged="ProviderCombo_SelectionChanged"/>
-            </ui:SettingsCard>
 
             <ui:SettingsCard Header="接口地址 (Base URL)">
                 <ui:SettingsCard.HeaderIcon>
@@ -122,32 +186,35 @@
                 </Grid>
             </ui:SettingsCard>
 
-            <ui:SettingsCard Header="系统提示词"
-                              Description="定义助手角色、语气、回答格式">
-                <ui:SettingsCard.HeaderIcon>
-                    <ui:FontIcon Glyph="&#xE82D;"/>
-                </ui:SettingsCard.HeaderIcon>
-                <TextBox x:Name="SystemPromptBox"
-                         MinWidth="340" MinHeight="80" MaxHeight="180"
-                         MaxLength="40"
-                         AcceptsReturn="True" TextWrapping="Wrap"
-                         VerticalScrollBarVisibility="Auto"/>
-            </ui:SettingsCard>
-
-            <ui:SettingsCard Header="高级（可选）"
-                              Description="温度（0 表示不发送）和 Max Tokens">
-                <ui:SettingsCard.HeaderIcon>
-                    <ui:FontIcon Glyph="&#xE7AF;"/>
-                </ui:SettingsCard.HeaderIcon>
-                <StackPanel Orientation="Horizontal">
-                    <TextBox x:Name="TemperatureBox" MinWidth="88"
-                             VerticalContentAlignment="Center"/>
-                    <TextBlock Text="温度" VerticalAlignment="Center" Margin="6,0,16,0"/>
-                    <TextBox x:Name="MaxTokensBox" MinWidth="88"
-                             VerticalContentAlignment="Center"/>
-                    <TextBlock Text="Max Tokens" VerticalAlignment="Center" Margin="6,0,0,0"/>
-                </StackPanel>
-            </ui:SettingsCard>
+            <!-- 全局设置（不随 provider 切换，存 PluginConfig 顶层） -->
+            <ui:SettingsExpander Header="全局设置"
+                                 Description="系统提示词与生成参数，对所有提供商生效"
+                                 IsExpanded="True">
+                <ui:SettingsExpander.HeaderIcon>
+                    <ui:FontIcon Glyph="&#xE713;"/>
+                </ui:SettingsExpander.HeaderIcon>
+                <ui:SettingsExpander.Items>
+                    <ui:SettingsCard Header="系统提示词"
+                                     Description="定义助手角色、语气、回答格式">
+                        <TextBox x:Name="SystemPromptBox"
+                                 MinWidth="340" MinHeight="80" MaxHeight="180"
+                                 MaxLength="40"
+                                 AcceptsReturn="True" TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto"/>
+                    </ui:SettingsCard>
+                    <ui:SettingsCard Header="高级（可选）"
+                                     Description="温度（0 表示不发送）和 Max Tokens">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBox x:Name="TemperatureBox" MinWidth="88"
+                                     VerticalContentAlignment="Center"/>
+                            <TextBlock Text="温度" VerticalAlignment="Center" Margin="6,0,16,0"/>
+                            <TextBox x:Name="MaxTokensBox" MinWidth="88"
+                                     VerticalContentAlignment="Center"/>
+                            <TextBlock Text="Max Tokens" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                        </StackPanel>
+                    </ui:SettingsCard>
+                </ui:SettingsExpander.Items>
+            </ui:SettingsExpander>
 
             <!-- 底部：状态 + 操作按钮，左右分布，间距拉开 -->
             <Grid Margin="4,16,0,4">

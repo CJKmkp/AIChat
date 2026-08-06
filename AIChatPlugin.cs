@@ -290,32 +290,37 @@ namespace AIChat
         public string GetSystemPrompt() => ConfigStore?.Current?.SystemPrompt ?? "";
 
         /// <summary>
-        /// 创建与当前协议匹配的聊天客户端。返回 null 表示未配置 API Key（调用方须提示）。
+        /// 创建与当前 provider 匹配的聊天客户端。返回 null 表示未配置 API Key（调用方须提示）。
         /// </summary>
         public IChatClient CreateClient()
         {
-            var cfg = ConfigStore.Current;
+            var p = ConfigStore.GetCurrentProvider();
+            if (p == null)
+            {
+                LogError("CreateClient 失败：没有已配置的提供商");
+                return null;
+            }
             var key = ConfigStore.GetApiKeyPlain();
-            Log($"CreateClient: provider={cfg.ProviderKey} protocol={cfg.Protocol} baseUrl={cfg.BaseUrl} " +
-                $"model={cfg.Model} keyLen={key?.Length ?? 0} maxTokens={cfg.MaxTokens} temp={cfg.Temperature}");
+            Log($"CreateClient: name={p.Name} type={p.Type} baseUrl={p.BaseUrl} " +
+                $"model={p.Model} keyLen={key?.Length ?? 0} maxTokens={ConfigStore.Current.MaxTokens} temp={ConfigStore.Current.Temperature}");
             if (string.IsNullOrEmpty(key))
             {
                 LogError("CreateClient 失败：API Key 为空（请在设置页填写并保存）");
                 return null;
             }
-            if (string.IsNullOrWhiteSpace(cfg.BaseUrl))
+            if (string.IsNullOrWhiteSpace(p.BaseUrl))
             {
                 LogError("CreateClient 失败：BaseUrl 为空");
                 return null;
             }
-            if (string.IsNullOrWhiteSpace(cfg.Model))
+            if (string.IsNullOrWhiteSpace(p.Model))
             {
                 LogError("CreateClient 失败：Model 为空");
                 return null;
             }
-            if (cfg.Protocol == ProtocolKind.Anthropic)
-                return new AnthropicChatClient(cfg.BaseUrl, key, cfg.Model, cfg.MaxTokens);
-            return new OpenAiChatClient(cfg.BaseUrl, key, cfg.Model, cfg.Temperature, cfg.MaxTokens);
+            if (p.IsAnthropic)
+                return new AnthropicChatClient(p.BaseUrl, key, p.Model, ConfigStore.Current.MaxTokens);
+            return new OpenAiChatClient(p.BaseUrl, key, p.Model, ConfigStore.Current.Temperature, ConfigStore.Current.MaxTokens);
         }
 
         /// <summary>
@@ -324,15 +329,20 @@ namespace AIChat
         /// </summary>
         public async System.Threading.Tasks.Task<List<string>> ListModelsAsync()
         {
-            var cfg = ConfigStore.Current;
+            var p = ConfigStore.GetCurrentProvider();
+            if (p == null)
+            {
+                LogError("ListModelsAsync 失败：没有已配置的提供商");
+                throw new InvalidOperationException("没有已配置的提供商");
+            }
             var key = ConfigStore.GetApiKeyPlain();
-            Log($"ListModelsAsync: provider={cfg.ProviderKey} protocol={cfg.Protocol} baseUrl={cfg.BaseUrl}");
+            Log($"ListModelsAsync: name={p.Name} type={p.Type} baseUrl={p.BaseUrl}");
             if (string.IsNullOrEmpty(key))
             {
                 LogError("ListModelsAsync 失败：API Key 为空");
                 throw new InvalidOperationException(Strings.Get("Err_NoApiKey"));
             }
-            if (string.IsNullOrWhiteSpace(cfg.BaseUrl))
+            if (string.IsNullOrWhiteSpace(p.BaseUrl))
             {
                 LogError("ListModelsAsync 失败：Base URL 为空");
                 throw new InvalidOperationException("接口地址为空");
@@ -340,9 +350,9 @@ namespace AIChat
             try
             {
                 // 拉取模型列表不依赖 model，直接按协议构造客户端
-                IChatClient client = cfg.Protocol == ProtocolKind.Anthropic
-                    ? new AnthropicChatClient(cfg.BaseUrl, key, cfg.Model, cfg.MaxTokens)
-                    : new OpenAiChatClient(cfg.BaseUrl, key, cfg.Model, cfg.Temperature, cfg.MaxTokens);
+                IChatClient client = p.IsAnthropic
+                    ? new AnthropicChatClient(p.BaseUrl, key, p.Model, ConfigStore.Current.MaxTokens)
+                    : new OpenAiChatClient(p.BaseUrl, key, p.Model, ConfigStore.Current.Temperature, ConfigStore.Current.MaxTokens);
                 var models = await client.ListModelsAsync(System.Threading.CancellationToken.None).ConfigureAwait(false);
                 Log($"ListModelsAsync 成功：{models?.Count ?? 0} 个模型");
                 return models;
@@ -457,33 +467,44 @@ namespace AIChat
         }
 
         /// <summary>
-        /// 设置页测试连接：模拟发送一条最短消息，
+        /// 设置页测试连接：模拟发送一条最短消息（"你是什么模型"），
         /// 成功/失败都写日志，失败时把原因返回给 UI。
+        /// 入参为当前编辑的 provider（表单先写回对象再调用）。
         /// </summary>
-        private async System.Threading.Tasks.Task<(bool Ok, string Message)> TestConnectionAsync(string apiKey, ProtocolKind protocol, string baseUrl)
+        private async System.Threading.Tasks.Task<(bool Ok, string Message)> TestConnectionAsync(ProviderConfig provider)
         {
-            var cfg = ConfigStore.Current;
+            if (provider == null)
+            {
+                LogError("测试连接失败：未选择提供商");
+                return (false, "未选择提供商");
+            }
+            var apiKey = "";
+            if (!string.IsNullOrEmpty(provider.ApiKeyCipher))
+            {
+                try { apiKey = SecretStore.TryUnprotect(Convert.FromBase64String(provider.ApiKeyCipher)); }
+                catch { }
+            }
             if (string.IsNullOrEmpty(apiKey))
             {
                 LogError("测试连接失败：API Key 为空");
                 return (false, "API Key 为空，请在设置中填写");
             }
-            if (string.IsNullOrWhiteSpace(baseUrl))
+            if (string.IsNullOrWhiteSpace(provider.BaseUrl))
             {
                 LogError("测试连接失败：Base URL 为空");
                 return (false, "接口地址为空");
             }
-            if (string.IsNullOrWhiteSpace(cfg.Model))
+            if (string.IsNullOrWhiteSpace(provider.Model))
             {
                 LogError("测试连接失败：Model 为空");
                 return (false, "模型名为空，请填写或拉取");
             }
-            Log($"测试连接开始: protocol={protocol} baseUrl={baseUrl} model={cfg.Model}");
+            Log($"测试连接开始: name={provider.Name} type={provider.Type} baseUrl={provider.BaseUrl} model={provider.Model}");
             try
             {
-                IChatClient client = protocol == ProtocolKind.Anthropic
-                    ? new AnthropicChatClient(baseUrl, apiKey, cfg.Model, 32)
-                    : new OpenAiChatClient(baseUrl, apiKey, cfg.Model, 0, 32);
+                IChatClient client = provider.IsAnthropic
+                    ? new AnthropicChatClient(provider.BaseUrl, apiKey, provider.Model, 32)
+                    : new OpenAiChatClient(provider.BaseUrl, apiKey, provider.Model, 0, 32);
                 var hist = new List<ChatMessage> { new ChatMessage("user", "你是什么模型") };
                 var full = await client.ChatAsync(hist, "直接回答你是什么模型，一句话即可。", _ => { },
                     System.Threading.CancellationToken.None);
@@ -496,7 +517,8 @@ namespace AIChat
                 }
                 // 空回复：发一次原始请求，把响应头 + body 打日志，定位是格式问题还是空响应
                 Log("测试连接：收到空回复，发原始诊断请求…");
-                var diag = await RawDiagnosticAsync(baseUrl, apiKey, cfg.Model, protocol).ConfigureAwait(false);
+                var diag = await RawDiagnosticAsync(provider.BaseUrl, apiKey, provider.Model,
+                    provider.IsAnthropic ? ProtocolKind.Anthropic : ProtocolKind.OpenAiCompatible).ConfigureAwait(false);
                 Log("测试连接空回复诊断: " + diag);
                 return (true, $"{Strings.Get("Info_TestOk")}（空回复）");
             }
