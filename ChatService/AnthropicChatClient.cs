@@ -100,6 +100,40 @@ namespace AIChat.ChatService
         }
 
         /// <summary>
+        /// 拉取 Anthropic /v1/models 端点（Models API 为 GA，无需 beta 头）。
+        /// </summary>
+        public async Task<List<string>> ListModelsAsync(CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(_baseUrl)) return new List<string>();
+            using var req = new HttpRequestMessage(HttpMethod.Get, _baseUrl + "/v1/models?limit=100");
+            req.Headers.TryAddWithoutValidation("x-api-key", _apiKey);
+            req.Headers.TryAddWithoutValidation("anthropic-version", ApiVersion);
+            using var resp = await HttpClientHolder.Shared.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var errText = await SafeReadAsync(resp, ct).ConfigureAwait(false);
+                throw new ChatHttpException((int)resp.StatusCode, errText);
+            }
+            var json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            var result = new List<string>();
+            using (var doc = JsonDocument.Parse(json))
+            {
+                if (doc.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var m in data.EnumerateArray())
+                    {
+                        if (m.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String)
+                        {
+                            var s = id.GetString();
+                            if (!string.IsNullOrEmpty(s)) result.Add(s);
+                        }
+                    }
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
         /// 从 content_block_delta 事件 JSON 提取 text_delta.text。
         /// </summary>
         private static string ExtractTextDelta(string dataJson)

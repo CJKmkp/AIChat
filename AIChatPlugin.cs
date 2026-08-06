@@ -173,7 +173,8 @@ namespace AIChat
                 {
                     Config = ConfigStore,
                     Notify = NotifyInfo,
-                    TestConnectionAsync = TestConnectionAsync
+                    TestConnectionAsync = TestConnectionAsync,
+                    ListModelsAsync = ListModelsAsync
                 };
             }
             return SettingsView;
@@ -287,16 +288,73 @@ namespace AIChat
         public string GetSystemPrompt() => ConfigStore?.Current?.SystemPrompt ?? "";
 
         /// <summary>
-        /// 创建与当前协议匹配的聊天客户端。
+        /// 创建与当前协议匹配的聊天客户端。返回 null 表示未配置 API Key（调用方须提示）。
         /// </summary>
         public IChatClient CreateClient()
         {
             var cfg = ConfigStore.Current;
             var key = ConfigStore.GetApiKeyPlain();
-            if (string.IsNullOrEmpty(key)) return null;
+            Log($"CreateClient: provider={cfg.ProviderKey} protocol={cfg.Protocol} baseUrl={cfg.BaseUrl} " +
+                $"model={cfg.Model} keyLen={key?.Length ?? 0} maxTokens={cfg.MaxTokens} temp={cfg.Temperature}");
+            if (string.IsNullOrEmpty(key))
+            {
+                LogError("CreateClient 失败：API Key 为空（请在设置页填写并保存）");
+                return null;
+            }
+            if (string.IsNullOrWhiteSpace(cfg.BaseUrl))
+            {
+                LogError("CreateClient 失败：BaseUrl 为空");
+                return null;
+            }
+            if (string.IsNullOrWhiteSpace(cfg.Model))
+            {
+                LogError("CreateClient 失败：Model 为空");
+                return null;
+            }
             if (cfg.Protocol == ProtocolKind.Anthropic)
                 return new AnthropicChatClient(cfg.BaseUrl, key, cfg.Model, cfg.MaxTokens);
             return new OpenAiChatClient(cfg.BaseUrl, key, cfg.Model, cfg.Temperature, cfg.MaxTokens);
+        }
+
+        /// <summary>
+        /// 拉取当前 provider 的可用模型列表。失败抛异常由调用方展示。
+        /// </summary>
+        public async System.Threading.Tasks.Task<List<string>> ListModelsAsync()
+        {
+            var cfg = ConfigStore.Current;
+            Log($"ListModelsAsync: provider={cfg.ProviderKey} protocol={cfg.Protocol} baseUrl={cfg.BaseUrl}");
+            var client = CreateClient();
+            if (client == null)
+            {
+                throw new InvalidOperationException(Strings.Get("Err_NoApiKey"));
+            }
+            try
+            {
+                var models = await client.ListModelsAsync(System.Threading.CancellationToken.None).ConfigureAwait(false);
+                Log($"ListModelsAsync 成功：{models?.Count ?? 0} 个模型");
+                return models;
+            }
+            catch (ChatHttpException hex)
+            {
+                LogError($"ListModelsAsync HTTP {hex.StatusCode}: {hex.Body}", hex);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                LogError("ListModelsAsync 失败: " + ex.Message, ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 记录一次聊天请求失败（供聊天窗调用，确保错误进入插件日志）。
+        /// </summary>
+        public void LogChatFailure(string context, Exception ex)
+        {
+            if (ex is ChatHttpException hex)
+                LogError($"{context}: HTTP {hex.StatusCode} — {hex.Body}", hex);
+            else
+                LogError($"{context}: {ex?.GetType().Name} — {ex?.Message}", ex);
         }
 
         /// <summary>
@@ -386,24 +444,56 @@ namespace AIChat
         }
 
         /// <summary>
-        /// 设置页测试连接：发一条最短请求验证。
+        /// 设置页测试连接：模拟发送一条最短消息，
+        /// 成功/失败都写日志，失败时把原因返回给 UI。
         /// </summary>
         private async System.Threading.Tasks.Task<bool> TestConnectionAsync(string apiKey, ProtocolKind protocol, string baseUrl)
         {
-            if (string.IsNullOrEmpty(apiKey)) return false;
+            var cfg = ConfigStore.Current;
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                LogError("测试连接失败：API Key 为空");
+                return false;
+            }
+            if (string.IsNullOrWhiteSpace(baseUrl))
+            {
+                LogError("测试连接失败：Base URL 为空");
+                return false;
+            }
+            Log($"测试连接开始: protocol={protocol} baseUrl={baseUrl} model={cfg.Model}");
             try
             {
-                var cfg = ConfigStore.Current;
                 IChatClient client = protocol == ProtocolKind.Anthropic
                     ? new AnthropicChatClient(baseUrl, apiKey, cfg.Model, 32)
                     : new OpenAiChatClient(baseUrl, apiKey, cfg.Model, 0, 32);
                 var hist = new List<ChatMessage> { new ChatMessage("user", "hi") };
                 var full = await client.ChatAsync(hist, "You are a tester. Reply with 'ok'.", _ => { },
                     System.Threading.CancellationToken.None);
-                return !string.IsNullOrWhiteSpace(full);
+                bool ok = !string.IsNullOrWhiteSpace(full);
+                Log(ok
+                    ? $"测试连接成功：收到回复 {full.Length} 字符（{Truncate(full, 80)}）"
+                    : "测试连接成功（空回复）");
+                return ok;
             }
-            catch { return false; }
+            catch (ChatHttpException hex)
+            {
+                LogError($"测试连接失败：HTTP {hex.StatusCode} — {hex.Body}", hex);
+                return false;
+            }
+            catch (OperationCanceledException)
+            {
+                LogError("测试连接失败：请求超时");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogError($"测试连接失败：{ex.GetType().Name} — {ex.Message}", ex);
+                return false;
+            }
         }
+
+        private static string Truncate(string s, int max)
+            => string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : s.Substring(0, max) + "…");
 
         // ---------- 内部 ----------
         private void SaveConfig()

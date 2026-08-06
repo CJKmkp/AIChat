@@ -46,12 +46,13 @@
                        TextWrapping="Wrap"
                        Margin="52,0,0,0"/>
 
-            <ui:SettingsCard Header="预设厂商">
+            <ui:SettingsCard Header="AI 提供商"
+                              Description="选择预设后自动填入接口地址与协议">
                 <ui:SettingsCard.HeaderIcon>
                     <ui:FontIcon Glyph="&#xE7BF;"/>
                 </ui:SettingsCard.HeaderIcon>
-                <ComboBox x:Name="PresetCombo" MinWidth="260"
-                          SelectionChanged="PresetCombo_SelectionChanged"/>
+                <ComboBox x:Name="ProviderCombo" MinWidth="260"
+                          SelectionChanged="ProviderCombo_SelectionChanged"/>
             </ui:SettingsCard>
 
             <ui:SettingsCard Header="接口地址 (Base URL)">
@@ -79,12 +80,22 @@
                 </Grid>
             </ui:SettingsCard>
 
-            <ui:SettingsCard Header="模型">
+            <ui:SettingsCard Header="模型"
+                              Description="可点「拉取模型」从接口获取可用模型列表">
                 <ui:SettingsCard.HeaderIcon>
                     <ui:FontIcon Glyph="&#xE8D0;"/>
                 </ui:SettingsCard.HeaderIcon>
-                <TextBox x:Name="ModelBox" MinWidth="340"
-                         VerticalContentAlignment="Center"/>
+                <Grid MinWidth="340">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="ModelBox" Grid.Column="0"
+                             VerticalContentAlignment="Center"/>
+                    <Button x:Name="BtnFetchModels" Grid.Column="1"
+                            MinWidth="96" Margin="10,0,0,0"
+                            Content="拉取模型" Click="BtnFetchModels_Click"/>
+                </Grid>
             </ui:SettingsCard>
 
             <ui:SettingsCard Header="系统提示词"

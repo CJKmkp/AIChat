@@ -6,19 +6,28 @@ using System.Text.Json.Serialization;
 
 namespace AIChat
 {
+    public enum ProtocolKind
+    {
+        OpenAiCompatible = 0,
+        Anthropic = 1
+    }
+
     /// <summary>
-    /// 插件配置（API 设置 + 聊天历史 + 悬浮按钮位置），JSON 持久化到 PluginConfigFolder/config.json。
-    /// 配置 JSON 含有 ApiKey 密文字段，密钥本体存密文（DPAPI 加密），不暴露明文。
+    /// 插件配置：参考 CCSwitch 等业内 AI 客户端标准结构（id/name/type/baseUrl/apiKey/model/models/temperature/maxTokens/systemPrompt）。
+    /// JSON 持久化到 PluginConfigFolder/config.json；API Key 走 DPAPI 加密存密文。
     /// </summary>
     public class PluginConfig
     {
+        /// <summary>当前 provider 标识（对应 <see cref="ProviderPresets.Presets"/> 的 key，如 "deepseek"/"claude"）。</summary>
+        public string ProviderKey { get; set; } = "deepseek";
         public ProtocolKind Protocol { get; set; } = ProtocolKind.OpenAiCompatible;
-        public ProviderPreset Preset { get; set; } = ProviderPreset.DeepSeek;
+
         public string BaseUrl { get; set; } = "https://api.deepseek.com/v1";
         public string Model { get; set; } = "deepseek-chat";
         public string SystemPrompt { get; set; } = "你是一名教学助手，回答简洁清晰，使用中文。";
         public double Temperature { get; set; } = 0;
         public int MaxTokens { get; set; } = 4096;
+
         /// <summary>DPAPI 加密后的 API Key 字节（Base64 字符串保存）。</summary>
         public string ApiKeyCipher { get; set; } = "";
 
@@ -27,69 +36,112 @@ namespace AIChat
     }
 
     /// <summary>
-    /// 提供商预设定义。
+    /// 单个 AI 提供商预设（标准结构）。
     /// </summary>
-    internal static class ProviderPresets
+    public class ProviderPreset
     {
-        public static readonly Dictionary<ProviderPreset, ProviderInfo> Map = new()
+        /// <summary>唯一 key（小写英文短码），对应 PluginConfig.ProviderKey。</summary>
+        public string Key { get; set; } = "";
+        /// <summary>显示名称。</summary>
+        public string Name { get; set; } = "";
+        /// <summary>协议类型：openai-compatible | anthropic</summary>
+        public string Type { get; set; } = "openai-compatible";
+        /// <summary>API 端点</summary>
+        public string BaseUrl { get; set; } = "";
+        /// <summary>该 provider 提供的可用模型列表。</summary>
+        public List<string> Models { get; set; } = new();
+    }
+
+    /// <summary>
+    /// 内置 provider 预设集合（标准 CCSwitch 风格）。key 为 provider 标识。
+    /// </summary>
+    public static class ProviderPresets
+    {
+        public static readonly List<ProviderPreset> Presets = new()
         {
-            [ProviderPreset.DeepSeek] = new ProviderInfo
+            new ProviderPreset
             {
-                DisplayName = "DeepSeek",
+                Key = "deepseek",
+                Name = "DeepSeek",
+                Type = "openai-compatible",
                 BaseUrl = "https://api.deepseek.com/v1",
-                Model = "deepseek-chat",
-                Protocol = ProtocolKind.OpenAiCompatible
+                Models = new() { "deepseek-chat", "deepseek-reasoner" }
             },
-            [ProviderPreset.OpenAI] = new ProviderInfo
+            new ProviderPreset
             {
-                DisplayName = "OpenAI",
+                Key = "openai",
+                Name = "OpenAI",
+                Type = "openai-compatible",
                 BaseUrl = "https://api.openai.com/v1",
-                Model = "gpt-4o-mini",
-                Protocol = ProtocolKind.OpenAiCompatible
+                Models = new() { "gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "o3-mini", "o4-mini" }
             },
-            [ProviderPreset.Zhipu] = new ProviderInfo
+            new ProviderPreset
             {
-                DisplayName = "智谱 GLM（OpenAI 兼容）",
+                Key = "zhipu",
+                Name = "智谱 GLM (OpenAI 兼容)",
+                Type = "openai-compatible",
                 BaseUrl = "https://open.bigmodel.cn/api/paas/v4",
-                Model = "glm-4-flash",
-                Protocol = ProtocolKind.OpenAiCompatible
+                Models = new() { "glm-4-flash", "glm-4-plus", "glm-4-air" }
             },
-            [ProviderPreset.Moonshot] = new ProviderInfo
+            new ProviderPreset
             {
-                DisplayName = "Moonshot Kimi（OpenAI 兼容）",
+                Key = "moonshot",
+                Name = "Moonshot Kimi (OpenAI 兼容)",
+                Type = "openai-compatible",
                 BaseUrl = "https://api.moonshot.cn/v1",
-                Model = "moonshot-v1-8k",
-                Protocol = ProtocolKind.OpenAiCompatible
+                Models = new() { "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k" }
             },
-            [ProviderPreset.QwenDashScope] = new ProviderInfo
+            new ProviderPreset
             {
-                DisplayName = "通义千问（DashScope 兼容模式）",
+                Key = "qwen",
+                Name = "通义千问 DashScope (兼容模式)",
+                Type = "openai-compatible",
                 BaseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                Model = "qwen-plus",
-                Protocol = ProtocolKind.OpenAiCompatible
+                Models = new() { "qwen-plus", "qwen-turbo", "qwen-max", "qwen-long" }
             },
-            [ProviderPreset.Ollama] = new ProviderInfo
+            new ProviderPreset
             {
-                DisplayName = "Ollama（本地）",
+                Key = "doubao",
+                Name = "豆包 (火山方舟)",
+                Type = "openai-compatible",
+                BaseUrl = "https://ark.cn-beijing.volces.com/api/v3",
+                Models = new() { "doubao-lite-32k", "doubao-pro-32k", "doubao-pro-256k" }
+            },
+            new ProviderPreset
+            {
+                Key = "ollama",
+                Name = "Ollama (本地)",
+                Type = "openai-compatible",
                 BaseUrl = "http://localhost:11434/v1",
-                Model = "qwen2.5:7b",
-                Protocol = ProtocolKind.OpenAiCompatible
+                Models = new() { "qwen2.5:7b", "llama3.2:3b", "deepseek-r1:8b" }
             },
-            [ProviderPreset.Claude] = new ProviderInfo
+            new ProviderPreset
             {
-                DisplayName = "Anthropic Claude",
+                Key = "claude",
+                Name = "Anthropic Claude",
+                Type = "anthropic",
                 BaseUrl = "https://api.anthropic.com",
-                Model = "claude-haiku-4-5",
-                Protocol = ProtocolKind.Anthropic
+                Models = new() { "claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5" }
             },
-            [ProviderPreset.Custom] = new ProviderInfo
+            new ProviderPreset
             {
-                DisplayName = "自定义",
+                Key = "custom",
+                Name = "自定义 (Custom)",
+                Type = "openai-compatible",
                 BaseUrl = "",
-                Model = "",
-                Protocol = ProtocolKind.OpenAiCompatible
+                Models = new()
             }
         };
+
+        public static ProviderPreset FindByKey(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return null;
+            foreach (var p in Presets)
+            {
+                if (string.Equals(p.Key, key, StringComparison.OrdinalIgnoreCase)) return p;
+            }
+            return null;
+        }
     }
 
     /// <summary>
@@ -126,10 +178,14 @@ namespace AIChat
                     var cfg = JsonSerializer.Deserialize<PluginConfig>(json, JsonOpts);
                     if (cfg != null) Current = cfg;
                 }
+                // 旧版本兼容：迁移旧的 ProtocolKind / Preset 字段
+                if (string.IsNullOrEmpty(Current.ProviderKey))
+                {
+                    Current.ProviderKey = "deepseek";
+                }
             }
             catch
             {
-                // 加载失败时回退到默认配置；保留旧文件不覆盖
                 Current = new PluginConfig();
             }
         }
@@ -156,10 +212,7 @@ namespace AIChat
                 var json = JsonSerializer.Serialize(Current.History, JsonOpts);
                 File.WriteAllText(_historyPath, json);
             }
-            catch
-            {
-                // 历史保存失败不阻塞
-            }
+            catch { }
         }
 
         public void LoadHistory()
@@ -174,10 +227,7 @@ namespace AIChat
                     Current.History = hist;
                 }
             }
-            catch
-            {
-                // 历史损坏时静默忽略
-            }
+            catch { }
         }
 
         public string GetApiKeyPlain()
@@ -205,16 +255,41 @@ namespace AIChat
             Current.ApiKeyCipher = Convert.ToBase64String(cipher);
         }
 
-        public void ApplyPreset(ProviderPreset preset, bool keepKeyAndOverride = true)
+        /// <summary>
+        /// 应用 provider 预设：填入 BaseUrl、协议、默认模型。不清空 API Key。
+        /// </summary>
+        public void ApplyProvider(string key)
         {
-            Current.Preset = preset;
-            if (!ProviderPresets.Map.TryGetValue(preset, out var info)) return;
-            Current.BaseUrl = info.BaseUrl;
-            Current.Model = info.Model;
-            // 协议跟随预设（Claude 走 Anthropic 协议）
-            Current.Protocol = info.Protocol;
-            // 自定义时保持用户现有值；其他预设应用模板
-            if (preset == ProviderPreset.Custom) return;
+            var preset = ProviderPresets.FindByKey(key);
+            if (preset == null) return;
+            Current.ProviderKey = preset.Key;
+            Current.BaseUrl = preset.BaseUrl;
+            Current.Protocol = string.Equals(preset.Type, "anthropic", StringComparison.OrdinalIgnoreCase)
+                ? ProtocolKind.Anthropic
+                : ProtocolKind.OpenAiCompatible;
+            // 切换 provider 时，如果当前 Model 不在新 provider 的模型列表里，则切到 provider 的第一个模型
+            if (preset.Models.Count > 0)
+            {
+                if (!preset.Models.Contains(Current.Model))
+                {
+                    Current.Model = preset.Models[0];
+                }
+            }
+        }
+
+        /// <summary>当前 provider 的可用模型列表（用于设置页/聊天窗模型下拉）。</summary>
+        public List<string> GetCurrentModels()
+        {
+            var preset = ProviderPresets.FindByKey(Current.ProviderKey);
+            if (preset == null) return new List<string>();
+            return new List<string>(preset.Models);
+        }
+
+        /// <summary>当前 provider 的显示名。找不到时回退 BaseUrl。</summary>
+        public string GetCurrentProviderName()
+        {
+            var preset = ProviderPresets.FindByKey(Current.ProviderKey);
+            return preset?.Name ?? "自定义";
         }
     }
 }

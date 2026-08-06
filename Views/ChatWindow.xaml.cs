@@ -238,27 +238,49 @@ namespace AIChat.Views
             Hide();
         }
 
-        // ---------- 模型选择下拉 ----------
+        // ---------- 模型选择下拉（先选 provider，再列该 provider 的 models） ----------
         private void ModelPicker_Click(object sender, MouseButtonEventArgs e)
         {
-            var menu = new ContextMenu();
             var cfg = Plugin?.ConfigStore?.Current;
             if (cfg == null) return;
-            foreach (var presetInfo in ProviderPresets.Map.Values)
+            var menu = new ContextMenu();
+
+            // 第一段：provider 子菜单（每个 provider 一个 submenu，列出其模型）
+            foreach (var p in ProviderPresets.Presets)
             {
-                var p = presetInfo; // capture
-                var item = new MenuItem { Header = $"{p.DisplayName}  ({p.Model})" };
-                item.Click += (_, __) =>
+                var providerItem = new MenuItem { Header = p.Name };
+                if (p.Models.Count == 0)
                 {
-                    cfg.Preset = ProviderPresets.Map.First(kv => kv.Value == p).Key;
-                    cfg.BaseUrl = p.BaseUrl;
-                    cfg.Model = p.Model;
-                    cfg.Protocol = p.Protocol;
-                    Plugin?.ConfigStore?.SaveConfig();
-                    UpdateModelLabel();
-                };
-                menu.Items.Add(item);
+                    var custom = new MenuItem { Header = "(自定义 URL 后填入模型)" };
+                    custom.IsEnabled = false;
+                    providerItem.Items.Add(custom);
+                }
+                else
+                {
+                    foreach (var m in p.Models)
+                    {
+                        var model = m; // capture
+                        var mi = new MenuItem
+                        {
+                            Header = (model == cfg.Model ? "✓ " : "   ") + model,
+                        };
+                        mi.Click += (_, __) =>
+                        {
+                            cfg.ProviderKey = p.Key;
+                            cfg.BaseUrl = p.BaseUrl;
+                            cfg.Model = model;
+                            cfg.Protocol = string.Equals(p.Type, "anthropic", StringComparison.OrdinalIgnoreCase)
+                                ? ProtocolKind.Anthropic
+                                : ProtocolKind.OpenAiCompatible;
+                            Plugin?.ConfigStore?.SaveConfig();
+                            UpdateModelLabel();
+                        };
+                        providerItem.Items.Add(mi);
+                    }
+                }
+                menu.Items.Add(providerItem);
             }
+
             menu.Items.Add(new Separator());
             var itemOpenSettings = new MenuItem { Header = "打开 AI 设置…" };
             itemOpenSettings.Click += (_, __) => Plugin?.OpenSettingsRequested();

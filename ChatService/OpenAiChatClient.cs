@@ -105,6 +105,39 @@ namespace AIChat.ChatService
         }
 
         /// <summary>
+        /// 拉取 OpenAI 兼容 /models 端点。
+        /// </summary>
+        public async Task<List<string>> ListModelsAsync(CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(_baseUrl)) return new List<string>();
+            using var req = new HttpRequestMessage(HttpMethod.Get, _baseUrl + "/models");
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+            using var resp = await HttpClientHolder.Shared.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var errText = await SafeReadAsync(resp, ct).ConfigureAwait(false);
+                throw new ChatHttpException((int)resp.StatusCode, errText);
+            }
+            var json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            var result = new List<string>();
+            using (var doc = JsonDocument.Parse(json))
+            {
+                if (doc.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var m in data.EnumerateArray())
+                    {
+                        if (m.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String)
+                        {
+                            var s = id.GetString();
+                            if (!string.IsNullOrEmpty(s)) result.Add(s);
+                        }
+                    }
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
         /// 从 OpenAI chunk JSON 提取 content 增量。
         /// </summary>
         private static string ExtractDelta(string dataJson)

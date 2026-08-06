@@ -2,24 +2,6 @@ using System.Collections.Generic;
 
 namespace AIChat
 {
-    public enum ProtocolKind
-    {
-        OpenAiCompatible = 0,
-        Anthropic = 1
-    }
-
-    public enum ProviderPreset
-    {
-        Custom = 0,
-        DeepSeek,
-        OpenAI,
-        Zhipu,
-        Moonshot,
-        QwenDashScope,
-        Ollama,
-        Claude
-    }
-
     /// <summary>
     /// 单条聊天消息。
     /// </summary>
@@ -33,7 +15,7 @@ namespace AIChat
     }
 
     /// <summary>
-    /// 聊天消息的本地持久化模型。Content 不再使用（向前兼容，可忽略）。
+    /// 聊天消息的本地持久化模型。
     /// </summary>
     public class PersistedMessage
     {
@@ -100,16 +82,5 @@ namespace AIChat
         public double Left { get; set; } = double.NaN;
         public double Top { get; set; } = double.NaN;
         public DockedEdge Edge { get; set; } = DockedEdge.Right;
-    }
-
-    /// <summary>
-    /// 预设厂商信息。
-    /// </summary>
-    public class ProviderInfo
-    {
-        public string DisplayName { get; set; } = "";
-        public string BaseUrl { get; set; } = "";
-        public string Model { get; set; } = "";
-        public ProtocolKind Protocol { get; set; } = ProtocolKind.OpenAiCompatible;
     }
 }

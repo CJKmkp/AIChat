@@ -19,6 +19,13 @@ namespace AIChat.ChatService
             string systemPrompt,
             Action<string> onDelta,
             CancellationToken ct);
+
+        /// <summary>
+        /// 拉取该 provider 的可用模型列表（用于设置页/聊天窗模型选择）。
+        /// OpenAI 兼容：GET {base}/models；Anthropic：GET {base}/v1/models。
+        /// 返回 null 表示该端点不支持或请求失败（调用方应提示）。
+        /// </summary>
+        Task<List<string>> ListModelsAsync(CancellationToken ct);
     }
 
     /// <summary>
