@@ -31,4 +31,10 @@
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- 排除子目录中的测试项目（SDK 风格默认会编译 **/*.cs） -->
+  <ItemGroup>
+    <Compile Remove="AIChat.Tests\**\*.cs" />
+    <None Remove="AIChat.Tests\**" />
+  </ItemGroup>
+
 </Project>

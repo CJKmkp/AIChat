@@ -59,7 +59,7 @@
                 <ui:SettingsCard.HeaderIcon>
                     <ui:FontIcon Glyph="&#xE774;"/>
                 </ui:SettingsCard.HeaderIcon>
-                <TextBox x:Name="BaseUrlBox" MinWidth="340"
+                <TextBox x:Name="BaseUrlBox" MinWidth="340" MaxLength="1024"
                          VerticalContentAlignment="Center"/>
             </ui:SettingsCard>
 
@@ -67,34 +67,58 @@
                 <ui:SettingsCard.HeaderIcon>
                     <ui:FontIcon Glyph="&#xE192;"/>
                 </ui:SettingsCard.HeaderIcon>
-                <Grid MinWidth="340">
+                <!-- 整体靠右：输入框+显示按钮块在 API Key 卡片右半部分右对齐 -->
+                <Grid MinWidth="340" HorizontalAlignment="Right">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <PasswordBox x:Name="ApiKeyBox" Grid.Column="0"/>
-                    <TextBox x:Name="ApiKeyPlainBox" Grid.Column="0" Visibility="Collapsed"/>
+                    <!--
+                        API Key 输入框：限制"视觉宽度"而非内容长度。
+                        - 固定宽度 220，内容超出时内部横向滚动（数据完整，不被截断）
+                        - MaxLength 256 仅作内容长度兜底（真实 Key 一般 <100）
+                    -->
+                    <PasswordBox x:Name="ApiKeyBox" Grid.Column="0"
+                                 Width="220"
+                                 MaxLength="256"
+                                 HorizontalContentAlignment="Right"
+                                 VerticalContentAlignment="Center"/>
+                    <TextBox x:Name="ApiKeyPlainBox" Grid.Column="0"
+                             Width="220"
+                             MaxLength="256"
+                             TextWrapping="NoWrap"
+                             HorizontalScrollBarVisibility="Auto"
+                             HorizontalContentAlignment="Right"
+                             VerticalContentAlignment="Center"
+                             Visibility="Collapsed"/>
                     <Button x:Name="BtnToggleKey" Grid.Column="1"
                             MinWidth="72" Margin="10,0,0,0"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Right"
                             Content="显示" Click="BtnToggleKey_Click"/>
                 </Grid>
             </ui:SettingsCard>
 
             <ui:SettingsCard Header="模型"
-                              Description="可点「拉取模型」从接口获取可用模型列表">
+                              Description="点「拉取模型」获取可用列表，再从下拉快捷填入">
                 <ui:SettingsCard.HeaderIcon>
                     <ui:FontIcon Glyph="&#xE8D0;"/>
                 </ui:SettingsCard.HeaderIcon>
-                <Grid MinWidth="340">
+                <Grid MinWidth="420">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBox x:Name="ModelBox" Grid.Column="0"
+                    <TextBox x:Name="ModelBox" Grid.Column="0" MaxLength="128"
                              VerticalContentAlignment="Center"/>
-                    <Button x:Name="BtnFetchModels" Grid.Column="1"
-                            MinWidth="96" Margin="10,0,0,0"
-                            Content="拉取模型" Click="BtnFetchModels_Click"/>
+                    <ComboBox x:Name="ModelCombo" Grid.Column="1"
+                              MinWidth="150"
+                              Margin="10,0,0,0"
+                              SelectionChanged="ModelCombo_SelectionChanged"/>
+                    <Button x:Name="BtnFetchModels" Grid.Column="2"
+                            MinWidth="84" Margin="10,0,0,0"
+                            Content="拉取" Click="BtnFetchModels_Click"/>
                 </Grid>
             </ui:SettingsCard>
 
@@ -105,6 +129,7 @@
                 </ui:SettingsCard.HeaderIcon>
                 <TextBox x:Name="SystemPromptBox"
                          MinWidth="340" MinHeight="80" MaxHeight="180"
+                         MaxLength="40"
                          AcceptsReturn="True" TextWrapping="Wrap"
                          VerticalScrollBarVisibility="Auto"/>
             </ui:SettingsCard>
@@ -130,6 +155,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="StatusText"
                            Grid.Column="0"
@@ -138,9 +164,13 @@
                            Foreground="Gray"/>
                 <Button x:Name="BtnTest" Grid.Column="1"
                         Content="测试连接" MinWidth="120" MinHeight="36"
-                        Margin="0,0,12,0"
+                        Margin="0,0,8,0"
                         Click="BtnTest_Click"/>
-                <Button x:Name="BtnSave" Grid.Column="2"
+                <Button x:Name="BtnSpeedTest" Grid.Column="2"
+                        Content="测速" MinWidth="96" MinHeight="36"
+                        Margin="0,0,8,0"
+                        Click="BtnSpeedTest_Click"/>
+                <Button x:Name="BtnSave" Grid.Column="3"
                         Content="保存" MinWidth="120" MinHeight="36"
                         Click="BtnSave_Click"/>
             </Grid>

@@ -23,9 +23,30 @@ namespace AIChat.ChatService
         /// <summary>
         /// 拉取该 provider 的可用模型列表（用于设置页/聊天窗模型选择）。
         /// OpenAI 兼容：GET {base}/models；Anthropic：GET {base}/v1/models。
-        /// 返回 null 表示该端点不支持或请求失败（调用方应提示）。
+        /// 返回空列表表示该端点不支持或请求失败（调用方应提示）。
         /// </summary>
         Task<List<string>> ListModelsAsync(CancellationToken ct);
+    }
+
+    /// <summary>
+    /// 端点测速结果（参考 CCSwitch SpeedtestService）。
+    /// </summary>
+    public class EndpointLatencyResult
+    {
+        public string Url { get; set; } = "";
+        public long? LatencyMs { get; set; }
+        public int? Status { get; set; }
+        public string Error { get; set; } = "";
+    }
+
+    /// <summary>
+    /// 带思考状态感知的聊天客户端。Anthropic 流式里有 thinking 事件，
+    /// OpenAI 兼容模型通常没有；实现方可在思考期间调用 <see cref="OnThinking"/>。
+    /// </summary>
+    public interface IThinkingAwareChatClient : IChatClient
+    {
+        /// <summary>思考状态变化回调：进入思考 / 思考结束。</summary>
+        Action<bool> OnThinkingChanged { get; set; }
     }
 
     /// <summary>

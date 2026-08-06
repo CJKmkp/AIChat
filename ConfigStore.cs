@@ -26,7 +26,11 @@ namespace AIChat
         public string Model { get; set; } = "deepseek-chat";
         public string SystemPrompt { get; set; } = "你是一名教学助手，回答简洁清晰，使用中文。";
         public double Temperature { get; set; } = 0;
-        public int MaxTokens { get; set; } = 4096;
+        /// <summary>
+        /// 最大输出 tokens。0 = 不发送该字段，由服务端用默认值（推荐，避免超大值导致中转站拒绝）。
+        /// 仅当用户显式设置 > 0 时才发给 OpenAI 兼容接口；Anthropic 接口必填，内部用 8192 兜底。
+        /// </summary>
+        public int MaxTokens { get; set; } = 0;
 
         /// <summary>DPAPI 加密后的 API Key 字节（Base64 字符串保存）。</summary>
         public string ApiKeyCipher { get; set; } = "";
@@ -145,6 +149,25 @@ namespace AIChat
     }
 
     /// <summary>
+    /// 把 double.NaN 序列化为 null，反序列化 null 为 double.NaN。
+    /// 用于 ButtonPositionState.Left/Top 的「未定位」语义（JSON 不能表示 NaN）。
+    /// </summary>
+    public class JsonDoubleNaNConverter : JsonConverter<double>
+    {
+        public override double Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null) return double.NaN;
+            return reader.GetDouble();
+        }
+
+        public override void Write(Utf8JsonWriter writer, double value, JsonSerializerOptions options)
+        {
+            if (double.IsNaN(value)) { writer.WriteNullValue(); return; }
+            writer.WriteNumberValue(value);
+        }
+    }
+
+    /// <summary>
     /// 配置文件读写。设置历史与悬浮按钮位置同在一个 config.json 中（API Key 密文字段分离）。
     /// </summary>
     public class ConfigStore
@@ -156,6 +179,11 @@ namespace AIChat
             DefaultIgnoreCondition = JsonIgnoreCondition.Never,
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         };
+
+        static ConfigStore()
+        {
+            JsonOpts.Converters.Add(new JsonDoubleNaNConverter());
+        }
 
         private readonly string _configPath;
         private readonly string _historyPath;

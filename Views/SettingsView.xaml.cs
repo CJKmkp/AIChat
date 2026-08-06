@@ -16,8 +16,9 @@ namespace AIChat.Views
     {
         public ConfigStore Config { get; set; }
         public Action<string, Ink_Canvas.Plugins.NotificationLevel> Notify { get; set; }
-        public Func<string, ProtocolKind, string, Task<bool>> TestConnectionAsync { get; set; }
         public Func<Task<List<string>>> ListModelsAsync { get; set; }
+        /// <summary>测试连接：返回 (是否成功, 结果/错误信息)。</summary>
+        public Func<string, ProtocolKind, string, Task<(bool, string)>> TestConnectionAsync { get; set; }
 
         private bool _keyShown;
         private bool _loading;
@@ -146,21 +147,53 @@ namespace AIChat.Views
                     StatusText.Text = "未获取到模型（该端点可能不支持 /models）";
                     return;
                 }
-                // 更新 provider 可用模型列表 + 模型下拉
+                // 更新 provider 预设的模型列表（不覆盖用户当前选择的模型）
                 var preset = ProviderPresets.FindByKey(Config.Current.ProviderKey);
                 if (preset != null && Config.Current.ProviderKey != "custom")
                 {
                     preset.Models.Clear();
                     preset.Models.AddRange(models);
                 }
-                ModelBox.Text = models.Contains(Config.Current.Model) ? Config.Current.Model : models[0];
-                StatusText.Text = $"已获取 {models.Count} 个模型";
+                RefreshModelDropdown(models);
+                StatusText.Text = $"已获取 {models.Count} 个模型，从下拉中选择";
                 Notify?.Invoke($"已获取 {models.Count} 个模型", Ink_Canvas.Plugins.NotificationLevel.Success);
             }
             catch (Exception ex)
             {
                 StatusText.Text = Strings.Get("Info_TestFail", ex.Message);
                 Notify?.Invoke(Strings.Get("Info_TestFail", ex.Message), Ink_Canvas.Plugins.NotificationLevel.Error);
+            }
+        }
+
+        /// <summary>
+        /// 把模型列表填充到 ModelCombo 下拉（可选模型），不覆盖当前 ModelBox 文本。
+        /// </summary>
+        private void RefreshModelDropdown(List<string> models)
+        {
+            ModelCombo.Items.Clear();
+            foreach (var m in models)
+            {
+                ModelCombo.Items.Add(new ComboBoxItem { Content = m, Tag = m });
+            }
+            // 当前模型若在列表中则选中
+            var cur = ModelBox.Text?.Trim() ?? "";
+            foreach (ComboBoxItem item in ModelCombo.Items)
+            {
+                if (string.Equals(item.Tag as string, cur, StringComparison.OrdinalIgnoreCase))
+                {
+                    ModelCombo.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+
+        /// <summary>模型下拉选择：把选中模型填到 ModelBox。</summary>
+        private void ModelCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_loading) return;
+            if (ModelCombo.SelectedItem is ComboBoxItem item && item.Tag is string m)
+            {
+                ModelBox.Text = m;
             }
         }
 
@@ -185,16 +218,28 @@ namespace AIChat.Views
             }
             // BaseUrl / Model
             Config.Current.BaseUrl = (BaseUrlBox.Text ?? "").Trim();
-            Config.Current.Model = (ModelBox.Text ?? "").Trim();
+            var modelText = (ModelBox.Text ?? "").Trim();
+            // Model 为空时，优先用 provider 预设的第一个模型，避免空 model 导致拉取/测试失败
+            if (string.IsNullOrEmpty(modelText))
+            {
+                var preset = ProviderPresets.FindByKey(Config.Current.ProviderKey);
+                if (preset != null && preset.Models.Count > 0)
+                {
+                    modelText = preset.Models[0];
+                    ModelBox.Text = modelText;
+                }
+            }
+            Config.Current.Model = modelText;
             Config.Current.SystemPrompt = (SystemPromptBox.Text ?? "").Trim();
             // 温度
             if (double.TryParse(TemperatureBox.Text, out var t) && t >= 0 && t <= 2)
                 Config.Current.Temperature = t;
             else Config.Current.Temperature = 0;
-            // MaxTokens
-            if (int.TryParse(MaxTokensBox.Text, out var mt) && mt > 0 && mt <= 128000)
+            // MaxTokens：空或 0 表示不发送（服务端用默认值）
+            if (int.TryParse(MaxTokensBox.Text, out var mt) && mt > 0 && mt <= 1048576)
                 Config.Current.MaxTokens = mt;
-            else Config.Current.MaxTokens = 4096;
+            else
+                Config.Current.MaxTokens = 0;
             // API Key
             string newKey = _keyShown ? ApiKeyPlainBox.Text : (ApiKeyBox.Password ?? "");
             if (string.IsNullOrEmpty(newKey) || newKey.All(c => c == '*'))
@@ -210,6 +255,43 @@ namespace AIChat.Views
                 Config.SetApiKeyPlain(newKey);
             }
             return true;
+        }
+
+        private async void BtnSpeedTest_Click(object sender, RoutedEventArgs e)
+        {
+            var baseUrl = (BaseUrlBox.Text ?? "").Trim();
+            if (string.IsNullOrEmpty(baseUrl))
+            {
+                StatusText.Text = "请先填写接口地址";
+                return;
+            }
+            StatusText.Text = "测速中…";
+            try
+            {
+                var results = await EndpointSpeedTest.TestEndpointsAsync(new[] { baseUrl }, 8);
+                var r = results.FirstOrDefault();
+                if (r == null)
+                {
+                    StatusText.Text = "测速无结果";
+                    return;
+                }
+                if (!string.IsNullOrEmpty(r.Error))
+                {
+                    StatusText.Text = $"测速失败：{r.Error}";
+                    Notify?.Invoke($"测速失败：{r.Error}", Ink_Canvas.Plugins.NotificationLevel.Warning);
+                    return;
+                }
+                var statusText = r.Status == 200 || r.Status == 401 || r.Status == 403
+                    ? "端点可达"
+                    : $"端点返回 HTTP {r.Status}";
+                StatusText.Text = $"{statusText}，延迟 {r.LatencyMs}ms";
+                Notify?.Invoke($"{statusText}，延迟 {r.LatencyMs}ms", Ink_Canvas.Plugins.NotificationLevel.Success);
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"测速失败：{ex.Message}";
+                Notify?.Invoke($"测速失败：{ex.Message}", Ink_Canvas.Plugins.NotificationLevel.Error);
+            }
         }
 
         private async void BtnSave_Click(object sender, RoutedEventArgs e)
@@ -230,22 +312,24 @@ namespace AIChat.Views
             try
             {
                 bool pass = false;
+                string message = "";
                 if (TestConnectionAsync != null)
                 {
-                    pass = await TestConnectionAsync(
+                    (pass, message) = await TestConnectionAsync(
                         Config.GetApiKeyPlain(),
                         Config.Current.Protocol,
                         Config.Current.BaseUrl);
                 }
                 if (pass)
                 {
-                    StatusText.Text = Strings.Get("Info_TestOk");
+                    StatusText.Text = message.Length > 0 ? message : Strings.Get("Info_TestOk");
                     Notify?.Invoke(Strings.Get("Info_TestOk"), Ink_Canvas.Plugins.NotificationLevel.Success);
                 }
                 else
                 {
-                    StatusText.Text = Strings.Get("Info_TestFail", "请检查接口地址与 Key");
-                    Notify?.Invoke(Strings.Get("Info_TestFail", "请检查接口地址与 Key"), Ink_Canvas.Plugins.NotificationLevel.Warning);
+                    var errText = message.Length > 0 ? message : "请检查接口地址与 Key";
+                    StatusText.Text = Strings.Get("Info_TestFail", errText);
+                    Notify?.Invoke(Strings.Get("Info_TestFail", errText), Ink_Canvas.Plugins.NotificationLevel.Warning);
                 }
             }
             catch (Exception ex)

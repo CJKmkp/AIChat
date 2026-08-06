@@ -63,9 +63,22 @@ namespace AIChat.Views
             }
         }
 
-        private void UpdateModelLabel()
+        /// <summary>
+        /// 刷新左上角模型标签。显示「模型名 @ provider名」。
+        /// 配置为空时才显示「未配置」。
+        /// </summary>
+        public void UpdateModelLabel()
         {
-            ModelNameText.Text = Plugin?.ConfigStore?.Current?.Model ?? "未配置";
+            var cfg = Plugin?.ConfigStore?.Current;
+            if (cfg == null || string.IsNullOrWhiteSpace(cfg.Model))
+            {
+                ModelNameText.Text = "未配置";
+                return;
+            }
+            var providerName = Plugin?.ConfigStore?.GetCurrentProviderName() ?? "";
+            ModelNameText.Text = string.IsNullOrEmpty(providerName)
+                ? cfg.Model
+                : $"{cfg.Model}";
         }
 
         private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -161,12 +174,26 @@ namespace AIChat.Views
                     });
                 });
 
+                // 思考状态回调：AI 在生成正文前若进入思考，则显示「思考中」动画
+                if (client is IThinkingAwareChatClient thinkingClient)
+                {
+                    thinkingClient.OnThinkingChanged = thinking =>
+                    {
+                        Dispatcher.Invoke(() =>
+                        {
+                            _streamingBubble?.SetThinking(thinking);
+                            if (thinking) MessagesScroll.ScrollToEnd();
+                        });
+                    };
+                }
+
                 try
                 {
                     finalText = await client.ChatAsync(history, systemPrompt, onDelta, _cts.Token);
                 }
                 catch (ChatHttpException hex)
                 {
+                    Plugin?.LogChatFailure("ChatAsync", hex);
                     AddAssistantError(string.Format(Strings.Get("Err_HttpStatus"), hex.StatusCode, hex.Message));
                     return;
                 }
@@ -239,46 +266,67 @@ namespace AIChat.Views
         }
 
         // ---------- 模型选择下拉（先选 provider，再列该 provider 的 models） ----------
+        // 规则：只显示「已配置好的」provider —— 即该 provider 的 Models 列表非空（已拉取/预设），
+        // 或当前正在用的自定义 provider（baseUrl 非空）。未配置的空预设不显示。
         private void ModelPicker_Click(object sender, MouseButtonEventArgs e)
         {
             var cfg = Plugin?.ConfigStore?.Current;
             if (cfg == null) return;
             var menu = new ContextMenu();
 
-            // 第一段：provider 子菜单（每个 provider 一个 submenu，列出其模型）
+            var configuredKeys = new HashSet<string>();
+
+            // 当前自定义 provider（有 baseUrl + model 就算已配置）
+            if (cfg.ProviderKey == "custom" && !string.IsNullOrWhiteSpace(cfg.BaseUrl) && !string.IsNullOrWhiteSpace(cfg.Model))
+            {
+                configuredKeys.Add("custom");
+            }
+
+            // 遍历内置预设：Models 列表非空 = 已配置
             foreach (var p in ProviderPresets.Presets)
             {
+                if (p.Models.Count == 0) continue; // 未配置的空预设不显示
+                configuredKeys.Add(p.Key);
+
                 var providerItem = new MenuItem { Header = p.Name };
-                if (p.Models.Count == 0)
+                foreach (var m in p.Models)
                 {
-                    var custom = new MenuItem { Header = "(自定义 URL 后填入模型)" };
-                    custom.IsEnabled = false;
-                    providerItem.Items.Add(custom);
-                }
-                else
-                {
-                    foreach (var m in p.Models)
+                    var model = m; // capture
+                    var mi = new MenuItem
                     {
-                        var model = m; // capture
-                        var mi = new MenuItem
-                        {
-                            Header = (model == cfg.Model ? "✓ " : "   ") + model,
-                        };
-                        mi.Click += (_, __) =>
-                        {
-                            cfg.ProviderKey = p.Key;
-                            cfg.BaseUrl = p.BaseUrl;
-                            cfg.Model = model;
-                            cfg.Protocol = string.Equals(p.Type, "anthropic", StringComparison.OrdinalIgnoreCase)
-                                ? ProtocolKind.Anthropic
-                                : ProtocolKind.OpenAiCompatible;
-                            Plugin?.ConfigStore?.SaveConfig();
-                            UpdateModelLabel();
-                        };
-                        providerItem.Items.Add(mi);
-                    }
+                        Header = (model == cfg.Model && cfg.ProviderKey == p.Key ? "✓ " : "   ") + model,
+                    };
+                    mi.Click += (_, __) =>
+                    {
+                        cfg.ProviderKey = p.Key;
+                        cfg.BaseUrl = p.BaseUrl;
+                        cfg.Model = model;
+                        cfg.Protocol = string.Equals(p.Type, "anthropic", StringComparison.OrdinalIgnoreCase)
+                            ? ProtocolKind.Anthropic
+                            : ProtocolKind.OpenAiCompatible;
+                        Plugin?.ConfigStore?.SaveConfig();
+                        UpdateModelLabel();
+                    };
+                    providerItem.Items.Add(mi);
                 }
                 menu.Items.Add(providerItem);
+            }
+
+            // 自定义 provider（已配置 baseUrl/model）单列
+            if (configuredKeys.Contains("custom"))
+            {
+                var customItem = new MenuItem { Header = "自定义" };
+                var mi = new MenuItem { Header = (cfg.Model.Length > 0 ? "✓ " : "   ") + cfg.Model };
+                mi.Click += (_, __) => { /* 已在用，无需切换 */ };
+                customItem.Items.Add(mi);
+                menu.Items.Add(customItem);
+            }
+
+            if (configuredKeys.Count == 0)
+            {
+                var empty = new MenuItem { Header = "尚未配置 AI 服务，请先到设置页填写" };
+                empty.IsEnabled = false;
+                menu.Items.Add(empty);
             }
 
             menu.Items.Add(new Separator());

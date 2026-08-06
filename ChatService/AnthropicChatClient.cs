@@ -12,9 +12,9 @@ namespace AIChat.ChatService
     /// <summary>
     /// Anthropic Messages API 流式客户端。
     /// 使用 x-api-key + anthropic-version 头，system 提示词作为单独字段，
-    /// SSE 事件解析 content_block_delta.text_delta。
+    /// SSE 事件解析 content_block_delta.text_delta，并感知 thinking 状态。
     /// </summary>
-    public class AnthropicChatClient : IChatClient
+    public class AnthropicChatClient : IChatClient, IThinkingAwareChatClient
     {
         private const string ApiVersion = "2023-06-01";
         private readonly string _baseUrl;
@@ -22,12 +22,15 @@ namespace AIChat.ChatService
         private readonly string _model;
         private readonly int _maxTokens;
 
-        public AnthropicChatClient(string baseUrl, string apiKey, string model, int maxTokens = 4096)
+        public Action<bool> OnThinkingChanged { get; set; }
+
+        public AnthropicChatClient(string baseUrl, string apiKey, string model, int maxTokens = 8192)
         {
             _baseUrl = (baseUrl ?? "").TrimEnd('/');
             _apiKey = apiKey ?? "";
             _model = model ?? "";
-            _maxTokens = maxTokens;
+            // Anthropic max_tokens 必填：0（未配置）时兜底 8192
+            _maxTokens = maxTokens > 0 ? maxTokens : 8192;
         }
 
         public async Task<string> ChatAsync(
@@ -87,11 +90,22 @@ namespace AIChat.ChatService
                 // 我们只关心 content_block_delta，data.delta.type=text_delta 时取 text
                 if (ev.Event != "content_block_delta") continue;
                 if (string.IsNullOrEmpty(ev.Data)) continue;
+                // 检测 thinking / thinking_delta
+                var isThinkingDelta = ev.Data.Contains("thinking_delta") || ev.Data.Contains("\"thinking\"");
+                var isTextDelta = ev.Data.Contains("text_delta") || ev.Data.Contains("\"text\"");
+                if (isThinkingDelta && !isTextDelta)
+                {
+                    // 进入思考中状态
+                    OnThinkingChanged?.Invoke(true);
+                    continue;
+                }
                 string text;
                 try { text = ExtractTextDelta(ev.Data); }
                 catch (JsonException) { continue; }
                 if (!string.IsNullOrEmpty(text))
                 {
+                    // 开始输出正文 = 思考结束
+                    OnThinkingChanged?.Invoke(false);
                     builder.Append(text);
                     onDelta?.Invoke(text);
                 }
@@ -136,7 +150,7 @@ namespace AIChat.ChatService
         /// <summary>
         /// 从 content_block_delta 事件 JSON 提取 text_delta.text。
         /// </summary>
-        private static string ExtractTextDelta(string dataJson)
+        internal static string ExtractTextDelta(string dataJson)
         {
             using var doc = JsonDocument.Parse(dataJson);
             var root = doc.RootElement;

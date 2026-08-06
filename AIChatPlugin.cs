@@ -196,6 +196,8 @@ namespace AIChat
                     // 恢复历史
                     ChatWindow.LoadHistory(ConfigStore.Current.History.Messages.Select(m => m.ToRuntime()));
                 }
+                // 每次显示都刷新模型标签（配置可能在设置页被修改过）
+                ChatWindow.UpdateModelLabel();
                 ChatWindow.Show();
                 ChatWindow.Activate();
                 ChatWindow.Topmost = _windowSvc?.IsTopMost ?? false;
@@ -317,19 +319,30 @@ namespace AIChat
         }
 
         /// <summary>
-        /// 拉取当前 provider 的可用模型列表。失败抛异常由调用方展示。
+        /// 拉取当前 provider 的可用模型列表（参考 cc-switch：不依赖当前 model，只需 baseUrl + key）。
+        /// 失败抛异常由调用方展示。
         /// </summary>
         public async System.Threading.Tasks.Task<List<string>> ListModelsAsync()
         {
             var cfg = ConfigStore.Current;
+            var key = ConfigStore.GetApiKeyPlain();
             Log($"ListModelsAsync: provider={cfg.ProviderKey} protocol={cfg.Protocol} baseUrl={cfg.BaseUrl}");
-            var client = CreateClient();
-            if (client == null)
+            if (string.IsNullOrEmpty(key))
             {
+                LogError("ListModelsAsync 失败：API Key 为空");
                 throw new InvalidOperationException(Strings.Get("Err_NoApiKey"));
+            }
+            if (string.IsNullOrWhiteSpace(cfg.BaseUrl))
+            {
+                LogError("ListModelsAsync 失败：Base URL 为空");
+                throw new InvalidOperationException("接口地址为空");
             }
             try
             {
+                // 拉取模型列表不依赖 model，直接按协议构造客户端
+                IChatClient client = cfg.Protocol == ProtocolKind.Anthropic
+                    ? new AnthropicChatClient(cfg.BaseUrl, key, cfg.Model, cfg.MaxTokens)
+                    : new OpenAiChatClient(cfg.BaseUrl, key, cfg.Model, cfg.Temperature, cfg.MaxTokens);
                 var models = await client.ListModelsAsync(System.Threading.CancellationToken.None).ConfigureAwait(false);
                 Log($"ListModelsAsync 成功：{models?.Count ?? 0} 个模型");
                 return models;
@@ -447,18 +460,23 @@ namespace AIChat
         /// 设置页测试连接：模拟发送一条最短消息，
         /// 成功/失败都写日志，失败时把原因返回给 UI。
         /// </summary>
-        private async System.Threading.Tasks.Task<bool> TestConnectionAsync(string apiKey, ProtocolKind protocol, string baseUrl)
+        private async System.Threading.Tasks.Task<(bool Ok, string Message)> TestConnectionAsync(string apiKey, ProtocolKind protocol, string baseUrl)
         {
             var cfg = ConfigStore.Current;
             if (string.IsNullOrEmpty(apiKey))
             {
                 LogError("测试连接失败：API Key 为空");
-                return false;
+                return (false, "API Key 为空，请在设置中填写");
             }
             if (string.IsNullOrWhiteSpace(baseUrl))
             {
                 LogError("测试连接失败：Base URL 为空");
-                return false;
+                return (false, "接口地址为空");
+            }
+            if (string.IsNullOrWhiteSpace(cfg.Model))
+            {
+                LogError("测试连接失败：Model 为空");
+                return (false, "模型名为空，请填写或拉取");
             }
             Log($"测试连接开始: protocol={protocol} baseUrl={baseUrl} model={cfg.Model}");
             try
@@ -466,34 +484,107 @@ namespace AIChat
                 IChatClient client = protocol == ProtocolKind.Anthropic
                     ? new AnthropicChatClient(baseUrl, apiKey, cfg.Model, 32)
                     : new OpenAiChatClient(baseUrl, apiKey, cfg.Model, 0, 32);
-                var hist = new List<ChatMessage> { new ChatMessage("user", "hi") };
-                var full = await client.ChatAsync(hist, "You are a tester. Reply with 'ok'.", _ => { },
+                var hist = new List<ChatMessage> { new ChatMessage("user", "你是什么模型") };
+                var full = await client.ChatAsync(hist, "直接回答你是什么模型，一句话即可。", _ => { },
                     System.Threading.CancellationToken.None);
                 bool ok = !string.IsNullOrWhiteSpace(full);
-                Log(ok
-                    ? $"测试连接成功：收到回复 {full.Length} 字符（{Truncate(full, 80)}）"
-                    : "测试连接成功（空回复）");
-                return ok;
+                if (ok)
+                {
+                    Log($"测试连接成功：收到回复 {full.Length} 字符（{Truncate(full, 80)}）");
+                    // 只返回"测试成功"，不把完整回复塞进设置页
+                    return (true, Strings.Get("Info_TestOk"));
+                }
+                // 空回复：发一次原始请求，把响应头 + body 打日志，定位是格式问题还是空响应
+                Log("测试连接：收到空回复，发原始诊断请求…");
+                var diag = await RawDiagnosticAsync(baseUrl, apiKey, cfg.Model, protocol).ConfigureAwait(false);
+                Log("测试连接空回复诊断: " + diag);
+                return (true, $"{Strings.Get("Info_TestOk")}（空回复）");
             }
             catch (ChatHttpException hex)
             {
                 LogError($"测试连接失败：HTTP {hex.StatusCode} — {hex.Body}", hex);
-                return false;
+                return (false, $"HTTP {hex.StatusCode}：{Truncate(ExtractErrorBody(hex.Body), 120)}");
             }
             catch (OperationCanceledException)
             {
                 LogError("测试连接失败：请求超时");
-                return false;
+                return (false, "请求超时");
             }
             catch (Exception ex)
             {
                 LogError($"测试连接失败：{ex.GetType().Name} — {ex.Message}", ex);
-                return false;
+                return (false, ex.Message);
+            }
+        }
+
+        /// <summary>从 API 错误 JSON 提取人类可读的 message 字段。</summary>
+        private static string ExtractErrorBody(string body)
+        {
+            if (string.IsNullOrWhiteSpace(body)) return body ?? "";
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(body);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("error", out var err) && err.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    if (err.TryGetProperty("message", out var msg) && msg.ValueKind == System.Text.Json.JsonValueKind.String)
+                        return msg.GetString() ?? body;
+                }
+                return body;
+            }
+            catch
+            {
+                return body;
             }
         }
 
         private static string Truncate(string s, int max)
             => string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : s.Substring(0, max) + "…");
+
+        /// <summary>
+        /// 原始诊断请求：直接发 HTTP，返回「响应头 + 响应体前 500 字符」，
+        /// 用于定位"空回复"（协议/格式/字段名不匹配）问题。
+        /// </summary>
+        private static async System.Threading.Tasks.Task<string> RawDiagnosticAsync(
+            string baseUrl, string apiKey, string model, ProtocolKind protocol)
+        {
+            try
+            {
+                var url = protocol == ProtocolKind.Anthropic
+                    ? baseUrl.TrimEnd('/') + "/v1/messages"
+                    : baseUrl.TrimEnd('/') + "/chat/completions";
+                var bodyObj = protocol == ProtocolKind.Anthropic
+                    ? (object)new { model = model, max_tokens = 32, stream = true,
+                        messages = new[] { new { role = "user", content = "你是什么模型" } } }
+                    : (object)new { model = model, stream = true,
+                        messages = new[] { new { role = "user", content = "你是什么模型" } } };
+                using var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, url)
+                {
+                    Content = new System.Net.Http.StringContent(
+                        System.Text.Json.JsonSerializer.Serialize(bodyObj),
+                        System.Text.Encoding.UTF8, "application/json")
+                };
+                if (protocol == ProtocolKind.Anthropic)
+                {
+                    req.Headers.TryAddWithoutValidation("x-api-key", apiKey);
+                    req.Headers.TryAddWithoutValidation("anthropic-version", "2023-06-01");
+                }
+                else
+                {
+                    req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+                }
+                using var resp = await ChatService.HttpClientHolder.Shared.SendAsync(
+                    req, System.Net.Http.HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+                var headers = resp.Content.Headers.ContentType?.MediaType ?? "?";
+                var status = (int)resp.StatusCode;
+                var body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                return $"status={status} contentType={headers} body={Truncate(body, 500)}";
+            }
+            catch (Exception ex)
+            {
+                return "诊断失败: " + ex.Message;
+            }
+        }
 
         // ---------- 内部 ----------
         private void SaveConfig()

@@ -111,6 +111,25 @@
                            Foreground="#99FFFFFF"
                            FontSize="12"
                            Visibility="Collapsed"/>
+                <!-- 思考中动画（三点跳动） -->
+                <TextBlock x:Name="AiThinking"
+                           Margin="40,8,0,0"
+                           FontSize="14"
+                           Foreground="#99FFFFFF"
+                           Visibility="Collapsed">
+                    <Run Text="●"/><Run Text="  "/><Run Text="●"/><Run Text="  "/><Run Text="●"/>
+                    <TextBlock.Triggers>
+                        <EventTrigger RoutedEvent="Loaded">
+                            <BeginStoryboard>
+                                <Storyboard x:Name="ThinkingStoryboard" RepeatBehavior="Forever">
+                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                     From="0.2" To="1" Duration="0:0:0.4"
+                                                     AutoReverse="True"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                    </TextBlock.Triggers>
+                </TextBlock>
                 <!-- 操作按钮：复制 / 插入画布 / 重新生成 -->
                 <ikw:SimpleStackPanel x:Name="AiActions"
                                        Margin="40,8,0,0"

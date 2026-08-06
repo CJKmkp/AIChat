@@ -41,6 +41,7 @@ namespace AIChat.Views
         public void AppendText(string delta)
         {
             AiText.Text = (AiText.Text ?? "") + delta;
+            AiThinking.Visibility = Visibility.Collapsed;
             AiStreaming.Visibility = Visibility.Visible;
             AiActions.Visibility = Visibility.Collapsed;
         }
@@ -48,7 +49,26 @@ namespace AIChat.Views
         public void FinishStreaming()
         {
             AiStreaming.Visibility = Visibility.Collapsed;
+            AiThinking.Visibility = Visibility.Collapsed;
             AiActions.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>
+        /// 设置「思考中」状态：thinking=true 时显示三点动画（正文尚未开始）；
+        /// false 时隐藏。正文流式期间由 AppendText 处理。
+        /// </summary>
+        public void SetThinking(bool thinking)
+        {
+            if (thinking)
+            {
+                AiThinking.Visibility = Visibility.Visible;
+                AiStreaming.Visibility = Visibility.Collapsed;
+                AiActions.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                AiThinking.Visibility = Visibility.Collapsed;
+            }
         }
 
         private void BtnCopy_Click(object sender, RoutedEventArgs e)
