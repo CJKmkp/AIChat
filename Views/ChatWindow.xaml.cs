@@ -193,7 +193,8 @@ namespace AIChat.Views
                     });
                 });
 
-                // 思考内容回调：DeepSeek reasoning_content / Claude thinking 单独累积，
+                // 思考内容回调：DeepSeek reasoning_content / Claude thinking /
+                // MiniMax 等 content 内嵌 think 块（OpenAiChatClient 已拆分）单独累积，
                 // 由气泡在「思考过程」折叠区展示，不混进正文。
                 var onThinkingDelta = new Action<string>(thinking =>
                 {

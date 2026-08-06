@@ -133,7 +133,7 @@
                             Click="ThinkingToggle_Click">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="💭" FontSize="12" VerticalAlignment="Center"/>
-                            <TextBlock Text="思考过程"
+                            <TextBlock Text="{Binding ThinkingLabel, Source={x:Static ai:Localized.Current}}"
                                        FontSize="12"
                                        Margin="4,0,3,0"
                                        VerticalAlignment="Center"

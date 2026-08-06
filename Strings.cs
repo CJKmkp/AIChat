@@ -29,6 +29,7 @@ namespace AIChat
             ["Chat_Bubble_Insert"]    = ("插入画布", "Insert to Canvas"),
             ["Chat_Bubble_Regenerate"]= ("重新生成", "Regenerate"),
             ["Chat_Streaming"]        = ("正在输入…", "Typing…"),
+            ["Chat_Thinking"]         = ("思考过程", "Thinking"),
             ["Chat_ConfirmClear"]     = ("确认清空当前对话？", "Clear current conversation?"),
             ["Chat_Status_Ready"]     = ("就绪", "Ready"),
             ["Chat_Status_Connecting"]= ("连接中…", "Connecting…"),
@@ -115,6 +116,7 @@ namespace AIChat
         public string BtnInsert => Strings.Get("Chat_Bubble_Insert");
         public string BtnRegenerate => Strings.Get("Chat_Bubble_Regenerate");
         public string Streaming => Strings.Get("Chat_Streaming");
+        public string ThinkingLabel => Strings.Get("Chat_Thinking");
         public string BtnSend => Strings.Get("Chat_Btn_Send");
         public string BtnStop => Strings.Get("Chat_Btn_Stop");
         public string BtnClear => Strings.Get("Chat_Btn_Clear");

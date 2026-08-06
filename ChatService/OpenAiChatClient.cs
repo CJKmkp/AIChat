@@ -109,23 +109,29 @@ namespace AIChat.ChatService
             var builder = new StringBuilder();
             using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
 
+            // content 内嵌 think 块（MiniMax-M3 / DeepSeek-R1 等经中转站的格式）拆分：
+            // 思考部分转给 onThinkingDelta（UI 折叠区展示），正文部分才进 builder。
+            Action<string> emitContent = s => { builder.Append(s); onDelta?.Invoke(s); };
+            var splitter = new ThinkBlockSplitter(emitContent, onThinkingDelta);
+
             // 兼容自定义中转站：请求 stream=true 但服务端可能返回完整 JSON（非流式）
             var contentType = resp.Content.Headers.ContentType?.MediaType ?? "";
             if (contentType.Contains("application/json") || contentType.Contains("text/json"))
             {
-                // 非流式 JSON 响应：直接读全文解析
+                // 非流式 JSON 响应：直接读全文解析，同样过一遍 think 块拆分
                 var fullJson = await new System.IO.StreamReader(stream, Encoding.UTF8).ReadToEndAsync().ConfigureAwait(false);
                 var fullText = ExtractFullContent(fullJson);
                 if (!string.IsNullOrEmpty(fullText))
                 {
-                    builder.Append(fullText);
-                    onDelta?.Invoke(fullText);
+                    splitter.Append(fullText);
+                    splitter.Finish();
                 }
                 return builder.ToString();
             }
 
             // 流式 SSE
             using var sse = new SseReader(stream);
+
             while (true)
             {
                 ct.ThrowIfCancellationRequested();
@@ -145,10 +151,9 @@ namespace AIChat.ChatService
                 }
                 if (!string.IsNullOrEmpty(delta))
                 {
-                    builder.Append(delta);
-                    onDelta?.Invoke(delta);
+                    splitter.Append(delta);
                 }
-                // 思考内容（DeepSeek reasoning_content）单独分流，不进正文
+                // 思考内容（DeepSeek reasoning_content 字段）单独分流，不进正文
                 if (onThinkingDelta != null)
                 {
                     string thinking;
@@ -158,6 +163,7 @@ namespace AIChat.ChatService
                         onThinkingDelta.Invoke(thinking);
                 }
             }
+            splitter.Finish();
             return builder.ToString();
         }
 
@@ -195,7 +201,8 @@ namespace AIChat.ChatService
         /// - choices[].delta.content            （标准流式）
         /// - choices[].message.content          （某些 chunk 用 message 而非 delta）
         /// - choices[].text                     （老式 Completion 流）
-        /// 思考内容 reasoning_content 由 <see cref="ExtractThinkingDelta"/> 单独提取，不进正文。
+        /// 思考内容 reasoning_content 由 <see cref="ExtractThinkingDelta"/> 单独提取，不进正文；
+        /// content 里内嵌的 think 块（```think...``` 等）由调用方的 <see cref="ThinkBlockSplitter"/> 剥离。
         /// </summary>
         internal static string ExtractDelta(string dataJson)
         {
@@ -286,6 +293,141 @@ namespace AIChat.ChatService
             catch
             {
                 return "";
+            }
+        }
+    }
+
+    /// <summary>
+    /// 流式「think 块」拆分器：把 OpenAI 兼容 content 里内嵌的思考标记块
+    /// （```think ... ```/think 、[thinking]...[/thinking] 、[think]...[/think] 、
+    /// &lt;think&gt;...&lt;/think&gt;）从正文中拆出来，分别增量转发给正文 / 思考回调。
+    /// <para>
+    /// MiniMax-M3、DeepSeek-R1 等推理模型经部分中转站时，思考内容会直接混进
+    /// content 字段而不是 reasoning_content，这里负责把它分流到 UI 可折叠的思考区，
+    /// 同时保证返回的正文里不含思考文本。
+    /// </para>
+    /// <para>
+    /// 算法是增量状态机：chunk 边界可能落在标记中间，因此每次只发出「不可能是
+    /// 未完成标记前缀」的部分，尾部最多扣住 <see cref="HoldBack"/> 个字符，等下一个
+    /// chunk 补齐后再判定。流结束时调用 <see cref="Finish"/> 放出全部残留
+    /// （未闭合的 think 块按思考处理到结尾）。
+    /// </para>
+    /// </summary>
+    internal sealed class ThinkBlockSplitter
+    {
+        private static readonly string[] OpeningMarkers = { "```think", "[thinking]", "[think]", "<think>" };
+        private static readonly string[] ClosingMarkers = { "```/think", "[/thinking]", "[/think]", "</think>" };
+
+        // 最长标记 = "[/thinking]" 共 11 字符。尾部最多可能是「最长标记 - 1」的未完成前缀，
+        // 必须扣住不发射，否则分块到达的标记会被当成正文吐出去。
+        private const int MaxMarkerLen = 11;
+        private const int HoldBack = MaxMarkerLen - 1;
+
+        private readonly StringBuilder _buf = new StringBuilder();
+        private bool _inside;                                  // 当前是否处于 think 块内
+        private readonly StringBuilder _content = new StringBuilder();
+        private readonly StringBuilder _thinking = new StringBuilder();
+
+        private readonly Action<string> _onContent;
+        private readonly Action<string> _onThinking;
+
+        /// <summary>已拆出的纯正文（不含 think 块）。</summary>
+        public string Content => _content.ToString();
+
+        /// <summary>已拆出的思考内容。</summary>
+        public string Thinking => _thinking.ToString();
+
+        public ThinkBlockSplitter(Action<string> onContent = null, Action<string> onThinking = null)
+        {
+            _onContent = onContent;
+            _onThinking = onThinking;
+        }
+
+        public void Append(string chunk)
+        {
+            if (string.IsNullOrEmpty(chunk)) return;
+            _buf.Append(chunk);
+            Process();
+        }
+
+        /// <summary>流结束：放出全部残留（未闭合的 think 块按思考处理到结尾）。</summary>
+        public void Finish()
+        {
+            if (_buf.Length > 0)
+            {
+                Emit(_buf.ToString());
+                _buf.Clear();
+            }
+        }
+
+        private void Process()
+        {
+            while (_buf.Length > 0)
+            {
+                var s = _buf.ToString();
+                var markers = _inside ? ClosingMarkers : OpeningMarkers;
+
+                // 找缓冲里最早出现的完整标记
+                int bestPos = -1, bestLen = 0;
+                for (int i = 0; i < markers.Length; i++)
+                {
+                    var pos = s.IndexOf(markers[i], StringComparison.Ordinal);
+                    if (pos >= 0 && (bestPos < 0 || pos < bestPos))
+                    {
+                        bestPos = pos;
+                        bestLen = markers[i].Length;
+                    }
+                }
+
+                if (bestPos >= 0)
+                {
+                    if (bestPos > 0)
+                    {
+                        // 标记之前的文本按当前状态先发出，然后重新扫描（此刻缓冲以标记开头）
+                        Emit(s.Substring(0, bestPos));
+                        _buf.Remove(0, bestPos);
+                        continue;
+                    }
+                    // 标记就在缓冲开头：切换状态并消费标记
+                    _inside = !_inside;
+                    _buf.Remove(0, bestLen);
+                    if (_inside)
+                    {
+                        // 吞掉 ```think / <think> 后紧跟的换行，思考内容从正文直接开始
+                        if (_buf.Length >= 2 && _buf[0] == '\r' && _buf[1] == '\n') _buf.Remove(0, 2);
+                        else if (_buf.Length >= 1 && _buf[0] == '\n') _buf.Remove(0, 1);
+                    }
+                    else
+                    {
+                        // 吞掉 </think> 后紧跟的换行（常见 </think>\n\n答案），正文不再以空行开头
+                        while (_buf.Length > 0 && (_buf[0] == '\n' || _buf[0] == '\r')) _buf.Remove(0, 1);
+                    }
+                    continue;
+                }
+
+                // 没有完整标记：只发出不可能成为标记前缀的部分，尾部扣住等待补齐
+                int emitLen = s.Length - HoldBack;
+                if (emitLen > 0)
+                {
+                    Emit(s.Substring(0, emitLen));
+                    _buf.Remove(0, emitLen);
+                }
+                break;
+            }
+        }
+
+        private void Emit(string seg)
+        {
+            if (seg.Length == 0) return;
+            if (_inside)
+            {
+                _thinking.Append(seg);
+                _onThinking?.Invoke(seg);
+            }
+            else
+            {
+                _content.Append(seg);
+                _onContent?.Invoke(seg);
             }
         }
     }
