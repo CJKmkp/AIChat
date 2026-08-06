@@ -67,6 +67,7 @@ namespace AIChat.Views
         }
 
         private ChatBubbleVm _vm;
+        private bool _thinkingExpanded;
 
         public ChatBubble()
         {
@@ -120,6 +121,13 @@ namespace AIChat.Views
             AiBlock.Visibility = Visibility.Visible;
             AiText.Text = vm.Text;
 
+            // 思考内容：有文本时显示折叠区（保持用户当前展开/折叠状态，流式追加不重置）
+            var hasThinking = !string.IsNullOrEmpty(vm.Thinking);
+            ThinkingSection.Visibility = hasThinking ? Visibility.Visible : Visibility.Collapsed;
+            ThinkingText.Text = vm.Thinking;
+            ThinkingBody.Visibility = (_thinkingExpanded && hasThinking)
+                ? Visibility.Visible : Visibility.Collapsed;
+
             if (vm.IsThinking)
             {
                 AiThinking.Visibility = Visibility.Visible;
@@ -138,6 +146,15 @@ namespace AIChat.Views
                 AiStreaming.Visibility = Visibility.Collapsed;
                 AiActions.Visibility = Visibility.Visible;
             }
+        }
+
+        private void ThinkingToggle_Click(object sender, RoutedEventArgs e)
+        {
+            _thinkingExpanded = !_thinkingExpanded;
+            var hasThinking = _vm != null && !string.IsNullOrEmpty(_vm.Thinking);
+            ThinkingBody.Visibility = (_thinkingExpanded && hasThinking)
+                ? Visibility.Visible : Visibility.Collapsed;
+            ThinkingChevron.Text = _thinkingExpanded ? "▴" : "▾";
         }
 
         private void BtnCopy_Click(object sender, RoutedEventArgs e)

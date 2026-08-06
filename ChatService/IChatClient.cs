@@ -18,7 +18,8 @@ namespace AIChat.ChatService
             IReadOnlyList<ChatMessage> history,
             string systemPrompt,
             Action<string> onDelta,
-            CancellationToken ct);
+            CancellationToken ct,
+            Action<string> onThinkingDelta = null);
 
         /// <summary>
         /// 拉取该 provider 的可用模型列表（用于设置页/聊天窗模型选择）。

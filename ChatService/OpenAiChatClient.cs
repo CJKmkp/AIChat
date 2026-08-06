@@ -63,7 +63,8 @@ namespace AIChat.ChatService
             IReadOnlyList<ChatMessage> history,
             string systemPrompt,
             Action<string> onDelta,
-            CancellationToken ct)
+            CancellationToken ct,
+            Action<string> onThinkingDelta = null)
         {
             if (string.IsNullOrEmpty(_baseUrl)) throw new InvalidOperationException("BaseUrl 未设置");
             if (string.IsNullOrEmpty(_apiKey)) throw new InvalidOperationException("API Key 未设置");
@@ -147,6 +148,15 @@ namespace AIChat.ChatService
                     builder.Append(delta);
                     onDelta?.Invoke(delta);
                 }
+                // 思考内容（DeepSeek reasoning_content）单独分流，不进正文
+                if (onThinkingDelta != null)
+                {
+                    string thinking;
+                    try { thinking = ExtractThinkingDelta(ev.Data); }
+                    catch (JsonException) { continue; }
+                    if (!string.IsNullOrEmpty(thinking))
+                        onThinkingDelta.Invoke(thinking);
+                }
             }
             return builder.ToString();
         }
@@ -181,11 +191,11 @@ namespace AIChat.ChatService
         }
 
         /// <summary>
-        /// 从 OpenAI chunk JSON 提取 content 增量。支持多种格式：
+        /// 从 OpenAI chunk JSON 提取正文 content 增量。支持多种格式：
         /// - choices[].delta.content            （标准流式）
-        /// - choices[].delta.reasoning_content  （DeepSeek 等思考内容）
         /// - choices[].message.content          （某些 chunk 用 message 而非 delta）
         /// - choices[].text                     （老式 Completion 流）
+        /// 思考内容 reasoning_content 由 <see cref="ExtractThinkingDelta"/> 单独提取，不进正文。
         /// </summary>
         internal static string ExtractDelta(string dataJson)
         {
@@ -200,9 +210,6 @@ namespace AIChat.ChatService
             {
                 if (delta.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String)
                     content = c.GetString();
-                // DeepSeek reasoning_content 也是正文的一部分（思考过程），加到正文
-                else if (delta.TryGetProperty("reasoning_content", out var rc) && rc.ValueKind == JsonValueKind.String)
-                    content = rc.GetString();
             }
             // 某些 chunk 直接用 message.content
             else if (first.TryGetProperty("message", out var message)
@@ -216,6 +223,25 @@ namespace AIChat.ChatService
                 content = t.GetString();
             }
             return content ?? "";
+        }
+
+        /// <summary>
+        /// 从 OpenAI chunk JSON 提取思考增量（DeepSeek 等模型的 reasoning_content）。
+        /// 与正文分离，由 UI 折叠展示。
+        /// </summary>
+        internal static string ExtractThinkingDelta(string dataJson)
+        {
+            using var doc = JsonDocument.Parse(dataJson);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array) return "";
+            if (choices.GetArrayLength() == 0) return "";
+            var first = choices[0];
+            if (first.TryGetProperty("delta", out var delta)
+                && delta.TryGetProperty("reasoning_content", out var rc) && rc.ValueKind == JsonValueKind.String)
+            {
+                return rc.GetString() ?? "";
+            }
+            return "";
         }
 
         /// <summary>

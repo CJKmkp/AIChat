@@ -168,6 +168,18 @@ namespace AIChat.Views
                     });
                 });
 
+                // 思考内容回调：DeepSeek reasoning_content / Claude thinking 单独累积，
+                // 由气泡在「思考过程」折叠区展示，不混进正文。
+                var onThinkingDelta = new Action<string>(thinking =>
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        aiVm.Thinking += thinking;
+                        aiVm.IsThinking = false; // 已有思考文本，不再是纯三点等待态
+                        MessagesScroll.ScrollToEnd();
+                    });
+                });
+
                 // 思考状态回调：AI 在生成正文前若进入思考，则显示「思考中」动画
                 if (client is IThinkingAwareChatClient thinkingClient)
                 {
@@ -183,7 +195,7 @@ namespace AIChat.Views
 
                 try
                 {
-                    finalText = await client.ChatAsync(history, systemPrompt, onDelta, _cts.Token);
+                    finalText = await client.ChatAsync(history, systemPrompt, onDelta, _cts.Token, onThinkingDelta);
                 }
                 catch (ChatHttpException hex)
                 {

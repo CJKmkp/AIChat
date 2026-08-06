@@ -37,7 +37,8 @@ namespace AIChat.ChatService
             IReadOnlyList<ChatMessage> history,
             string systemPrompt,
             Action<string> onDelta,
-            CancellationToken ct)
+            CancellationToken ct,
+            Action<string> onThinkingDelta = null)
         {
             if (string.IsNullOrEmpty(_baseUrl)) throw new InvalidOperationException("BaseUrl 未设置");
             if (string.IsNullOrEmpty(_apiKey)) throw new InvalidOperationException("API Key 未设置");
@@ -95,8 +96,15 @@ namespace AIChat.ChatService
                 var isTextDelta = ev.Data.Contains("text_delta") || ev.Data.Contains("\"text\"");
                 if (isThinkingDelta && !isTextDelta)
                 {
-                    // 进入思考中状态
+                    // 进入思考中状态，且把思考内容转发出去（由 UI 折叠展示）
                     OnThinkingChanged?.Invoke(true);
+                    if (onThinkingDelta != null)
+                    {
+                        string thinking;
+                        try { thinking = ExtractThinkingDelta(ev.Data); }
+                        catch (JsonException) { continue; }
+                        if (!string.IsNullOrEmpty(thinking)) onThinkingDelta.Invoke(thinking);
+                    }
                     continue;
                 }
                 string text;
@@ -162,6 +170,24 @@ namespace AIChat.ChatService
             }
             if (delta.TryGetProperty("text", out var textEl) && textEl.ValueKind == JsonValueKind.String)
                 return textEl.GetString();
+            return "";
+        }
+
+        /// <summary>
+        /// 从 content_block_delta 事件 JSON 提取 thinking_delta.thinking（思考内容）。
+        /// </summary>
+        internal static string ExtractThinkingDelta(string dataJson)
+        {
+            using var doc = JsonDocument.Parse(dataJson);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("delta", out var delta)) return "";
+            if (delta.TryGetProperty("type", out var typeEl) && typeEl.ValueKind == JsonValueKind.String)
+            {
+                var type = typeEl.GetString();
+                if (type != "thinking_delta") return "";
+            }
+            if (delta.TryGetProperty("thinking", out var t) && t.ValueKind == JsonValueKind.String)
+                return t.GetString();
             return "";
         }
 

@@ -40,6 +40,30 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+
+        <!-- 思考折叠头：无 chrome 纯文字按钮 -->
+        <Style x:Key="ThinkingToggleStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource FloatingBarForegroundBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="Transparent" Padding="2,2">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Opacity" Value="0.75"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </UserControl.Resources>
     <Border Margin="0,6" Padding="0" HorizontalAlignment="Stretch">
         <Grid>
@@ -99,6 +123,42 @@
                                Foreground="#99FFFFFF"
                                Margin="0,2,0,4"/>
                 </Grid>
+                <!-- 思考过程（可折叠）：有 thinking 内容时显示折叠头，展开看推理文本 -->
+                <StackPanel x:Name="ThinkingSection"
+                            Margin="40,0,0,6"
+                            Visibility="Collapsed">
+                    <Button x:Name="ThinkingToggle"
+                            Style="{StaticResource ThinkingToggleStyle}"
+                            HorizontalAlignment="Left"
+                            Click="ThinkingToggle_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="💭" FontSize="12" VerticalAlignment="Center"/>
+                            <TextBlock Text="思考过程"
+                                       FontSize="12"
+                                       Margin="4,0,3,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource FloatingBarForegroundBrush}"/>
+                            <TextBlock x:Name="ThinkingChevron"
+                                       Text="▾"
+                                       FontSize="11"
+                                       VerticalAlignment="Center"
+                                       Opacity="0.6"/>
+                        </StackPanel>
+                    </Button>
+                    <Border x:Name="ThinkingBody"
+                            Margin="0,6,0,0"
+                            Background="#14FFFFFF"
+                            CornerRadius="8"
+                            Padding="10,8"
+                            Visibility="Collapsed">
+                        <TextBlock x:Name="ThinkingText"
+                                   TextWrapping="Wrap"
+                                   FontSize="12"
+                                   LineHeight="18"
+                                   Foreground="#BFFFFFFF"/>
+                    </Border>
+                </StackPanel>
+
                 <TextBlock x:Name="AiText"
                            Margin="40,0,0,0"
                            TextWrapping="Wrap"

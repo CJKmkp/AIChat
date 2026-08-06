@@ -67,6 +67,14 @@ namespace AIChat
             set { _isThinking = value; Raise(nameof(IsThinking)); }
         }
 
+        private string _thinking = "";
+        /// <summary>思考/推理内容（DeepSeek reasoning_content、Claude thinking），UI 折叠展示。</summary>
+        public string Thinking
+        {
+            get => _thinking;
+            set { _thinking = value ?? ""; Raise(nameof(Thinking)); }
+        }
+
         public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
         private void Raise(string name = "")
             => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
