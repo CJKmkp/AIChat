@@ -10,6 +10,9 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using AIChat.ChatService;
 using Ink_Canvas.Plugins;
+using ContentDialog = iNKORE.UI.WPF.Modern.Controls.ContentDialog;
+using ContentDialogButton = iNKORE.UI.WPF.Modern.Controls.ContentDialogButton;
+using ContentDialogResult = iNKORE.UI.WPF.Modern.Controls.ContentDialogResult;
 
 namespace AIChat.Views
 {
@@ -236,11 +239,18 @@ namespace AIChat.Views
             try { _cts?.Cancel(); } catch { }
         }
 
-        private void BtnClear_Click(object sender, RoutedEventArgs e)
+        private async void BtnClear_Click(object sender, RoutedEventArgs e)
         {
             if (Messages.Count == 0) return;
-            var r = MessageBox.Show("确认清空当前对话？", "清空", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-            if (r != MessageBoxResult.OK) return;
+            var dialog = new ContentDialog
+            {
+                Title = Strings.Get("Chat_Btn_Clear"),
+                Content = Strings.Get("Chat_ConfirmClear"),
+                PrimaryButtonText = Strings.Get("Chat_Btn_Clear"),
+                SecondaryButtonText = Strings.Get("Settings_Btn_Cancel"),
+                DefaultButton = ContentDialogButton.Primary
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
             Messages.Clear();
             Plugin?.ClearRuntimeHistory();
         }

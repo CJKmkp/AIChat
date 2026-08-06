@@ -28,6 +28,7 @@ namespace AIChat
             ["Chat_Bubble_Insert"]    = ("插入画布", "Insert to Canvas"),
             ["Chat_Bubble_Regenerate"]= ("重新生成", "Regenerate"),
             ["Chat_Streaming"]        = ("正在输入…", "Typing…"),
+            ["Chat_ConfirmClear"]     = ("确认清空当前对话？", "Clear current conversation?"),
             ["Chat_Status_Ready"]     = ("就绪", "Ready"),
             ["Chat_Status_Connecting"]= ("连接中…", "Connecting…"),
             ["Chat_Status_Streaming"]  = ("生成中…", "Streaming…"),

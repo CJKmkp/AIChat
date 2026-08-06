@@ -14,7 +14,8 @@
         注意：宿主 PluginSettingsPage 外层已包 ScrollViewer(PanningMode=VerticalFirst)，
         这里不要再包 ScrollViewer，否则嵌套滚动条会导致全页滚动失效。滚动由宿主页面统一处理。
 
-        双栏 master-detail：左列 = 提供商列表（可增删切换）；右列 = 编辑选中 provider 的表单。
+        双栏 master-detail：左列 = 提供商列表（ui:ListView，无边框，选中态走宿主默认圆角高亮）；
+        右列 = 编辑选中 provider 的表单。参考宿主 AutomationWorkflowPage 的列表 + 编辑面板模式。
     -->
     <Grid>
         <Grid.ColumnDefinitions>
@@ -27,7 +28,7 @@
         </FrameworkElement.Resources>
 
         <!-- ================= 左列：提供商列表 + 增删 ================= -->
-        <Grid Grid.Column="0" Margin="0,0,10,0">
+        <Grid Grid.Column="0" Margin="0,0,12,0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
@@ -37,35 +38,38 @@
             <TextBlock Grid.Row="0"
                        Text="{Binding ProviderListTitle, Source={x:Static ai:Localized.Current}}"
                        FontSize="13" FontWeight="SemiBold"
-                       Foreground="{DynamicResource FloatingBarForegroundBrush}"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                        Margin="4,0,0,8"/>
 
-            <Border Grid.Row="1"
-                    Background="#14FFFFFF"
-                    BorderBrush="{DynamicResource FloatingBarBorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8"
-                    Padding="4">
-                <ListBox x:Name="ProviderList"
+            <!-- 列表：透明无边框；选中/悬停高亮由 ui:ListView 默认样式提供 -->
+            <ui:ListView Grid.Row="1"
+                         x:Name="ProviderList"
                          Background="Transparent"
                          BorderThickness="0"
                          SelectionChanged="ProviderList_SelectionChanged"
+                         HorizontalContentAlignment="Stretch"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Margin="8,6">
-                                <TextBlock Text="{Binding Name}"
-                                           FontSize="13" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource FloatingBarForegroundBrush}"/>
-                                <TextBlock Text="{Binding TypeLabel}"
-                                           FontSize="11"
-                                           Foreground="#88FFFFFF"
-                                           Margin="0,2,0,0"/>
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </Border>
+                <ui:ListView.ItemContainerStyle>
+                    <Style TargetType="ui:ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Padding" Value="10,6"/>
+                        <Setter Property="Margin" Value="2,1"/>
+                        <Setter Property="MinHeight" Value="42"/>
+                    </Style>
+                </ui:ListView.ItemContainerStyle>
+                <ui:ListView.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel>
+                            <TextBlock Text="{Binding Name}"
+                                       FontSize="13" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding TypeLabel}"
+                                       FontSize="11"
+                                       Opacity="0.6"
+                                       Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ui:ListView.ItemTemplate>
+            </ui:ListView>
 
             <ikw:SimpleStackPanel Grid.Row="2"
                                   Orientation="Horizontal"
@@ -131,23 +135,22 @@
                 <ui:SettingsCard.HeaderIcon>
                     <ui:FontIcon Glyph="&#xE192;"/>
                 </ui:SettingsCard.HeaderIcon>
-                <!-- 整体靠右：输入框+显示按钮块在 API Key 卡片右半部分右对齐 -->
-                <Grid MinWidth="340" HorizontalAlignment="Right">
+                <!--
+                    第一列 * 占位：把「输入框 + 显示按钮」整组推到卡片右缘（与 BaseUrl/模型右缘对齐）。
+                    API Key 输入框限制"视觉宽度"而非内容长度：固定宽度 220，内容超出内部横向滚动（数据完整不被截断）。
+                -->
+                <Grid HorizontalAlignment="Right">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <!--
-                        API Key 输入框：限制"视觉宽度"而非内容长度。
-                        - 固定宽度 220，内容超出时内部横向滚动（数据完整，不被截断）
-                        - MaxLength 256 仅作内容长度兜底（真实 Key 一般 <100）
-                    -->
-                    <PasswordBox x:Name="ApiKeyBox" Grid.Column="0"
+                    <PasswordBox x:Name="ApiKeyBox" Grid.Column="1"
                                  Width="220"
                                  MaxLength="256"
                                  HorizontalContentAlignment="Right"
                                  VerticalContentAlignment="Center"/>
-                    <TextBox x:Name="ApiKeyPlainBox" Grid.Column="0"
+                    <TextBox x:Name="ApiKeyPlainBox" Grid.Column="1"
                              Width="220"
                              MaxLength="256"
                              TextWrapping="NoWrap"
@@ -155,7 +158,7 @@
                              HorizontalContentAlignment="Right"
                              VerticalContentAlignment="Center"
                              Visibility="Collapsed"/>
-                    <Button x:Name="BtnToggleKey" Grid.Column="1"
+                    <Button x:Name="BtnToggleKey" Grid.Column="2"
                             MinWidth="72" Margin="10,0,0,0"
                             VerticalAlignment="Center"
                             HorizontalAlignment="Right"

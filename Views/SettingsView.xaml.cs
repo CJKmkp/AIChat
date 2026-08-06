@@ -5,13 +5,16 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using AIChat.ChatService;
+using ContentDialog = iNKORE.UI.WPF.Modern.Controls.ContentDialog;
+using ContentDialogButton = iNKORE.UI.WPF.Modern.Controls.ContentDialogButton;
+using ContentDialogResult = iNKORE.UI.WPF.Modern.Controls.ContentDialogResult;
 
 namespace AIChat.Views
 {
     /// <summary>
-    /// 插件设置页（master-detail 双栏）：左侧提供商列表（添加/删除/切换），
+    /// 插件设置页（master-detail 双栏）：左侧提供商列表（ui:ListView，添加/删除/切换），
     /// 右侧编辑选中提供商的 名称/协议/地址/API Key/模型，底部为全局设置（系统提示词/温度/MaxTokens）。
-    /// 表单直接编辑选中的 <see cref="ProviderConfig"/> 对象，「保存」统一落盘。
+    /// 表单直接编辑选中的 <see cref="ProviderConfig"/> 对象，「保存」统一落盘并刷新列表。
     /// </summary>
     public partial class SettingsView : UserControl
     {
@@ -21,42 +24,55 @@ namespace AIChat.Views
         /// <summary>测试连接：入参为当前编辑的 provider，返回 (是否成功, 结果/错误信息)。</summary>
         public Func<ProviderConfig, Task<(bool, string)>> TestConnectionAsync { get; set; }
 
+        private bool _initialized;
         private bool _loading;
         private bool _keyShown;
 
         public SettingsView()
         {
             InitializeComponent();
+            // 构造时 Config 尚未由对象初始化器赋值，等 Loaded 后再初始化（参考宿主 AutomationWorkflowPage）
+            Loaded += SettingsView_Loaded;
+        }
+
+        private void SettingsView_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (_initialized) return;
+            _initialized = true;
             if (Config != null) LoadFromConfig();
         }
 
         private void LoadFromConfig()
         {
-            RefreshProviderList();
-            // 显式加载表单（RefreshProviderList 里 SelectedItem 变化可能被 _loading guard 跳过）
+            var currentId = Config.Current.CurrentProviderId;
+            RefreshProviderList(currentId);
             LoadForm(ProviderList.SelectedItem as ProviderConfig ?? Config.GetCurrentProvider());
             UpdateDeleteButton();
         }
 
         // ---------- 左列：提供商列表 ----------
 
+        /// <summary>
+        /// 重新绑定列表并选中指定 provider（name 改动/增删后调用，保证 UI 同步）。
+        /// selectId 为空时优先保留当前选中，否则用当前 provider。
+        /// </summary>
         private void RefreshProviderList(string selectId = null)
         {
+            var keepId = selectId;
+            if (string.IsNullOrEmpty(keepId) && ProviderList.SelectedItem is ProviderConfig cur)
+                keepId = cur.Id;
+            if (string.IsNullOrEmpty(keepId))
+                keepId = Config.GetCurrentProvider().Id;
+
             ProviderList.ItemsSource = null;
-            var list = Config.GetAllProviders();
-            ProviderList.ItemsSource = list;
+            ProviderList.ItemsSource = Config.GetAllProviders();
+
             ProviderConfig target = null;
-            if (selectId != null)
+            foreach (var p in Config.GetAllProviders())
             {
-                foreach (var p in list)
-                {
-                    if (string.Equals(p.Id, selectId, StringComparison.Ordinal)) { target = p; break; }
-                }
+                if (string.Equals(p.Id, keepId, StringComparison.Ordinal)) { target = p; break; }
             }
-            if (target == null && ProviderList.SelectedItem is ProviderConfig cur) target = cur;
-            if (target == null) target = Config.GetCurrentProvider();
-            ProviderList.SelectedItem = target;
-            UpdateDeleteButton();
+            ProviderList.SelectedItem = target ?? Config.GetCurrentProvider();
         }
 
         private void ProviderList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -93,10 +109,11 @@ namespace AIChat.Views
             var provider = Config.AddProvider(templateKey);
             RefreshProviderList(provider.Id);
             LoadForm(provider);
-            Notify?.Invoke("已添加提供商", Ink_Canvas.Plugins.NotificationLevel.Success);
+            UpdateDeleteButton();
+            Notify?.Invoke(Strings.Get("Provider_Added"), Ink_Canvas.Plugins.NotificationLevel.Success);
         }
 
-        private void BtnDeleteProvider_Click(object sender, RoutedEventArgs e)
+        private async void BtnDeleteProvider_Click(object sender, RoutedEventArgs e)
         {
             var p = ProviderList.SelectedItem as ProviderConfig ?? Config.GetCurrentProvider();
             if (p == null) return;
@@ -106,14 +123,21 @@ namespace AIChat.Views
                 Notify?.Invoke(Strings.Get("Provider_CantDeleteLast"), Ink_Canvas.Plugins.NotificationLevel.Warning);
                 return;
             }
-            var msg = string.Format(Strings.Get("Provider_ConfirmDelete"), p.Name);
-            var r = MessageBox.Show(msg, Strings.Get("Provider_Delete"),
-                MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-            if (r != MessageBoxResult.OK) return;
+            var dialog = new ContentDialog
+            {
+                Title = Strings.Get("Provider_Delete"),
+                Content = string.Format(Strings.Get("Provider_ConfirmDelete"), p.Name),
+                PrimaryButtonText = Strings.Get("Provider_Delete"),
+                SecondaryButtonText = Strings.Get("Settings_Btn_Cancel"),
+                DefaultButton = ContentDialogButton.Secondary
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            var nextId = Config.GetAllProviders()[0].Id;
             Config.RemoveProvider(p.Id);
-            RefreshProviderList();
+            RefreshProviderList(nextId);
             LoadForm(ProviderList.SelectedItem as ProviderConfig ?? Config.GetCurrentProvider());
-            Notify?.Invoke("已删除提供商", Ink_Canvas.Plugins.NotificationLevel.Success);
+            UpdateDeleteButton();
+            Notify?.Invoke(Strings.Get("Provider_Deleted"), Ink_Canvas.Plugins.NotificationLevel.Success);
         }
 
         // ---------- 右列：编辑表单 ----------
@@ -341,12 +365,12 @@ namespace AIChat.Views
 
         private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
-            if (SaveToConfig())
-            {
-                try { Config.SaveConfig(); } catch { }
-                StatusText.Text = Strings.Get("Settings_Saved");
-                Notify?.Invoke(Strings.Get("Settings_Saved"), Ink_Canvas.Plugins.NotificationLevel.Success);
-            }
+            if (!SaveToConfig()) return;
+            try { Config.SaveConfig(); } catch { }
+            // 保存后刷新列表（provider 名称等改动同步到左侧）
+            RefreshProviderList(ProviderList.SelectedItem is ProviderConfig sel ? sel.Id : null);
+            StatusText.Text = Strings.Get("Settings_Saved");
+            Notify?.Invoke(Strings.Get("Settings_Saved"), Ink_Canvas.Plugins.NotificationLevel.Success);
         }
 
         private async void BtnTest_Click(object sender, RoutedEventArgs e)
