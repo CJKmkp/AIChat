@@ -263,6 +263,12 @@ namespace AIChat.Views
         // ---------- 模型选择下拉（只列「已配置」providers 及其模型） ----------
         // 规则：遍历 config 的 Providers（用户添加/保留的才叫已配置），每个 provider 一个分组，
         // 子菜单列其 Models；点模型即切 provider + 换模型。内置模板不直接列出。
+        private void ModelPicker_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            // 下拉在标题栏拖动 Grid 内：吞掉按下事件，避免冒泡触发 DragMove()
+            e.Handled = true;
+        }
+
         private void ModelPicker_Click(object sender, MouseButtonEventArgs e)
         {
             var store = Plugin?.ConfigStore;
@@ -307,23 +313,11 @@ namespace AIChat.Views
                 menu.Items.Add(empty);
             }
 
-            menu.Items.Add(new Separator());
-            var itemOpenSettings = new MenuItem { Header = "打开 AI 设置…" };
-            itemOpenSettings.Click += (_, __) => Plugin?.OpenSettingsRequested();
-            menu.Items.Add(itemOpenSettings);
             menu.PlacementTarget = (FrameworkElement)sender;
             menu.IsOpen = true;
-        }
-
-        // ---------- 底部 + 按钮（清空） ----------
-        private void BtnMore_Click(object sender, RoutedEventArgs e)
-        {
-            var menu = new ContextMenu();
-            var itemClear = new MenuItem { Header = Strings.Get("Chat_Btn_Clear") };
-            itemClear.Click += (_, __) => BtnClear_Click(sender, e);
-            menu.Items.Add(itemClear);
-            menu.PlacementTarget = (FrameworkElement)sender;
-            menu.IsOpen = true;
+            // 关键：吞掉本次 MouseUp，否则它会被新打开的菜单当成「点外面」而立即关闭，
+            // 导致要点好几下才能打开。
+            e.Handled = true;
         }
 
         // ---------- 直接将最后一次 AI 回答插入画布 ----------

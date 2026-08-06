@@ -88,19 +88,23 @@
                 <Border Grid.Column="0"
                         Background="#22FFFFFF"
                         CornerRadius="8"
-                        Padding="10,5"
+                        Padding="8,3"
+                        MaxHeight="28"
                         Cursor="Hand"
+                        PreviewMouseLeftButtonDown="ModelPicker_PreviewMouseLeftButtonDown"
                         MouseLeftButtonUp="ModelPicker_Click">
-                    <ikw:SimpleStackPanel Orientation="Horizontal" Spacing="6">
+                    <ikw:SimpleStackPanel Orientation="Horizontal" Spacing="5">
                         <TextBlock x:Name="ModelNameText"
                                    Text="deepseek-chat"
                                    VerticalAlignment="Center"
                                    Foreground="{DynamicResource FloatingBarForegroundBrush}"
-                                   FontSize="13"/>
+                                   FontSize="12"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxWidth="220"/>
                         <TextBlock Text="▾"
                                    VerticalAlignment="Center"
                                    Foreground="{DynamicResource FloatingBarForegroundBrush}"
-                                   FontSize="12"/>
+                                   FontSize="10"/>
                     </ikw:SimpleStackPanel>
                 </Border>
 
@@ -171,23 +175,12 @@
                     Padding="10,6">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- 左侧更多按钮（清空/插入画布 菜单） -->
-                    <Button x:Name="BtnMore" Grid.Column="0"
-                            Style="{StaticResource IconButtonStyle}"
-                            Width="36" Height="36"
-                            Margin="0,0,6,0"
-                            Click="BtnMore_Click"
-                            ToolTip="更多">
-                        <ui:FontIcon Glyph="&#xE710;" FontSize="16"/>
-                    </Button>
-
                     <TextBox x:Name="InputBox"
-                             Grid.Column="1"
+                             Grid.Column="0"
                              MinHeight="36" MaxHeight="120"
                              Background="Transparent"
                              BorderThickness="0"
@@ -199,7 +192,7 @@
                              PreviewKeyDown="InputBox_PreviewKeyDown"/>
 
                     <!-- 右侧发送/停止按钮（互斥显示） -->
-                    <Grid Grid.Column="2">
+                    <Grid Grid.Column="1">
                         <Button x:Name="BtnSend"
                                 Style="{StaticResource AccentIconButtonStyle}"
                                 Width="40" Height="36"
