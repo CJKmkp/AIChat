@@ -9,6 +9,13 @@
              mc:Ignorable="d"
              d:DesignHeight="80" d:DesignWidth="500">
     <UserControl.Resources>
+        <!-- 本地色板：与 ChatWindow 一致的玻璃叠加与次级文本色，集中便于统一调整 -->
+        <SolidColorBrush x:Key="ChatOverlayBrush" Color="#22FFFFFF"/>
+        <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="#99FFFFFF"/>
+        <SolidColorBrush x:Key="ChatSubtleTextBrush" Color="#BFFFFFFF"/>
+        <SolidColorBrush x:Key="ChatThinkingBackgroundBrush" Color="#14FFFFFF"/>
+        <SolidColorBrush x:Key="ChatThinkingBorderBrush" Color="#26FFFFFF"/>
+
         <Style x:Key="BubbleIconButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderBrush" Value="#40FFFFFF"/>
@@ -89,7 +96,7 @@
                 <Border Grid.Column="1"
                         Width="32" Height="32"
                         CornerRadius="16"
-                        Background="#22FFFFFF"
+                        Background="{DynamicResource ChatOverlayBrush}"
                         VerticalAlignment="Top">
                     <TextBlock Text="👤" FontSize="16"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -110,17 +117,17 @@
                             Width="32" Height="32"
                             Margin="0,0,8,0"
                             CornerRadius="16"
-                            Background="#22FFFFFF"
+                            Background="{DynamicResource ChatOverlayBrush}"
                             VerticalAlignment="Top">
                         <TextBlock Text="🤖" FontSize="16"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <TextBlock x:Name="AiName"
                                Grid.Column="1"
-                               Text="AI"
+                               Text="{Binding BubbleName, Source={x:Static ai:Localized.Current}}"
                                FontSize="12"
                                FontWeight="SemiBold"
-                               Foreground="#99FFFFFF"
+                               Foreground="{DynamicResource ChatSecondaryTextBrush}"
                                Margin="0,2,0,4"/>
                 </Grid>
                 <!-- 思考过程（可折叠）：有 thinking 内容时显示折叠头，展开看推理文本 -->
@@ -147,7 +154,9 @@
                     </Button>
                     <Border x:Name="ThinkingBody"
                             Margin="0,6,0,0"
-                            Background="#14FFFFFF"
+                            Background="{DynamicResource ChatThinkingBackgroundBrush}"
+                            BorderBrush="{DynamicResource ChatThinkingBorderBrush}"
+                            BorderThickness="1"
                             CornerRadius="8"
                             Padding="10,8"
                             Visibility="Collapsed">
@@ -155,7 +164,7 @@
                                    TextWrapping="Wrap"
                                    FontSize="12"
                                    LineHeight="18"
-                                   Foreground="#BFFFFFFF"/>
+                                   Foreground="{DynamicResource ChatSubtleTextBrush}"/>
                     </Border>
                 </StackPanel>
 
@@ -168,14 +177,14 @@
                 <TextBlock x:Name="AiStreaming"
                            Margin="40,4,0,0"
                            Text="{Binding Streaming, Source={x:Static ai:Localized.Current}}"
-                           Foreground="#99FFFFFF"
+                           Foreground="{DynamicResource ChatSecondaryTextBrush}"
                            FontSize="12"
                            Visibility="Collapsed"/>
                 <!-- 思考中动画（三点跳动） -->
                 <TextBlock x:Name="AiThinking"
                            Margin="40,8,0,0"
                            FontSize="14"
-                           Foreground="#99FFFFFF"
+                           Foreground="{DynamicResource ChatSecondaryTextBrush}"
                            Visibility="Collapsed">
                     <Run Text="●"/><Run Text="  "/><Run Text="●"/><Run Text="  "/><Run Text="●"/>
                     <TextBlock.Triggers>

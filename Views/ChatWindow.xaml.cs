@@ -90,7 +90,7 @@ namespace AIChat.Views
             var p = Plugin?.ConfigStore?.GetCurrentProvider();
             if (p == null || string.IsNullOrWhiteSpace(p.Model))
             {
-                ModelNameText.Text = "未配置";
+                ModelNameText.Text = Strings.Get("Chat_Unconfigured");
                 return;
             }
             ModelNameText.Text = p.Model;
@@ -320,7 +320,7 @@ namespace AIChat.Views
                 var providerItem = new MenuItem { Header = p.Name };
                 if (p.Models == null || p.Models.Count == 0)
                 {
-                    var noModel = new MenuItem { Header = "（未设置模型）", IsEnabled = false };
+                    var noModel = new MenuItem { Header = Strings.Get("Chat_NoModel"), IsEnabled = false };
                     providerItem.Items.Add(noModel);
                 }
                 else
@@ -346,7 +346,7 @@ namespace AIChat.Views
 
             if (store.GetAllProviders().Count == 0)
             {
-                var empty = new MenuItem { Header = "尚未配置 AI 服务，请先到设置页添加" };
+                var empty = new MenuItem { Header = Strings.Get("Chat_NoProvider") };
                 empty.IsEnabled = false;
                 menu.Items.Add(empty);
             }

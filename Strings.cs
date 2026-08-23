@@ -25,6 +25,12 @@ namespace AIChat
             ["Chat_Btn_Clear"]        = ("清空对话", "Clear"),
             ["Chat_Btn_Close"]        = ("关闭", "Close"),
             ["Chat_Btn_Resize"]       = ("拖动调整大小", "Drag to resize"),
+            ["Chat_Empty_Title"]      = ("开始新对话", "Start a new chat"),
+            ["Chat_Empty_Desc"]       = ("向 AI 助手提问，或粘贴文本以获得回应", "Ask the AI assistant, or paste text to get a reply"),
+            ["Chat_Bubble_Name"]      = ("AI 助手", "AI Assistant"),
+            ["Chat_Unconfigured"]     = ("未配置", "Not configured"),
+            ["Chat_NoModel"]          = ("（未设置模型）", "(No model set)"),
+            ["Chat_NoProvider"]       = ("尚未配置 AI 服务，请先到设置页添加", "No AI service configured. Add one in Settings."),
             ["Chat_Bubble_Copy"]      = ("复制", "Copy"),
             ["Chat_Bubble_Insert"]    = ("插入画布", "Insert to Canvas"),
             ["Chat_Bubble_Regenerate"]= ("重新生成", "Regenerate"),
@@ -121,6 +127,9 @@ namespace AIChat
         public string BtnStop => Strings.Get("Chat_Btn_Stop");
         public string BtnClear => Strings.Get("Chat_Btn_Clear");
         public string BtnResize => Strings.Get("Chat_Btn_Resize");
+        public string EmptyTitle => Strings.Get("Chat_Empty_Title");
+        public string EmptyDesc => Strings.Get("Chat_Empty_Desc");
+        public string BubbleName => Strings.Get("Chat_Bubble_Name");
         public string Title => Strings.Get("Settings_Title");
         public string ProviderListTitle => Strings.Get("Provider_ListTitle");
         public string Provider_Add => Strings.Get("Provider_Add");

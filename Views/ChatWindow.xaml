@@ -59,6 +59,12 @@
         <Style x:Key="AccentIconButtonStyle" TargetType="Button" BasedOn="{StaticResource IconButtonStyle}">
             <Setter Property="Foreground" Value="{DynamicResource FloatingBarAccentBrush}"/>
         </Style>
+
+        <!-- 本地色板：玻璃面上的白色半透明叠加与次级文本色。
+             默认浮动栏为深色玻璃底，固定白 alpha 叠加与其一致；
+             集中在窗口级资源便于统一调整/兼容自定义浮动栏主题。 -->
+        <SolidColorBrush x:Key="ChatOverlayBrush" Color="#22FFFFFF"/>
+        <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="#99FFFFFF"/>
     </Window.Resources>
 
     <Border Background="{DynamicResource FloatingBarBackgroundBrush}"
@@ -86,7 +92,7 @@
                 </Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0"
-                        Background="#22FFFFFF"
+                        Background="{DynamicResource ChatOverlayBrush}"
                         CornerRadius="8"
                         Padding="8,3"
                         MaxHeight="28"
@@ -120,7 +126,7 @@
                             Style="{StaticResource IconButtonStyle}"
                             Width="34" Height="34"
                             Click="BtnClose_Click"
-                            ToolTip="关闭">
+                            ToolTip="{Binding BtnClose, Source={x:Static ai:Localized.Current}}">
                         <ui:FontIcon Glyph="&#xE711;" FontSize="12"/>
                     </Button>
                 </ikw:SimpleStackPanel>
@@ -134,30 +140,40 @@
                             IsHitTestVisible="False">
                     <Border Width="120" Height="120"
                             CornerRadius="60"
-                            Background="#22FFFFFF"
+                            Background="{DynamicResource ChatOverlayBrush}"
                             HorizontalAlignment="Center">
                         <TextBlock Text="🤖"
                                    FontSize="56"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"/>
                     </Border>
-                    <TextBlock Text="开始新对话"
+                    <TextBlock Text="{Binding EmptyTitle, Source={x:Static ai:Localized.Current}}"
                                FontSize="20"
                                FontWeight="SemiBold"
                                HorizontalAlignment="Center"
                                Margin="0,16,0,4"
                                Foreground="{DynamicResource FloatingBarForegroundBrush}"/>
-                    <TextBlock Text="向 AI 助手提问，或粘贴文本以获得回应"
+                    <TextBlock Text="{Binding EmptyDesc, Source={x:Static ai:Localized.Current}}"
                                FontSize="13"
                                HorizontalAlignment="Center"
-                               Foreground="#99FFFFFF"/>
+                               Foreground="{DynamicResource ChatSecondaryTextBrush}"/>
                 </StackPanel>
 
                 <ScrollViewer x:Name="MessagesScroll"
                               VerticalScrollBarVisibility="Auto"
                               Background="Transparent"
+                              ScrollViewer.CanContentScroll="True"
                               Visibility="Collapsed">
-                    <ItemsControl x:Name="MessagesList" Margin="14,8,14,8">
+                    <ItemsControl x:Name="MessagesList"
+                                  Margin="14,8,14,8"
+                                  VirtualizingPanel.IsVirtualizing="True"
+                                  VirtualizingPanel.VirtualizationMode="Recycling"
+                                  VirtualizingPanel.ScrollUnit="Pixel">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <VirtualizingStackPanel/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <local:ChatBubble/>
@@ -170,7 +186,7 @@
             <!-- 底部胶囊输入条 -->
             <Border Grid.Row="2"
                     Margin="14,8,14,14"
-                    Background="#22FFFFFF"
+                    Background="{DynamicResource ChatOverlayBrush}"
                     CornerRadius="22"
                     Padding="10,6">
                 <Grid>
