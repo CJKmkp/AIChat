@@ -69,8 +69,8 @@
 | `config.json` | 提供商列表、当前 provider、系统提示词、温度、Max Tokens、悬浮按钮位置 |
 | `history.json` | 会话历史（含全部气泡） |
 
-- **API Key 不落明文**：使用 Windows **DPAPI**（`CryptProtectData` + 应用级熵加盐）加密后以密文存储，仅当前 Windows 用户可解密。
-- 旧版（单 provider 顶层字段）配置**自动迁移**到新结构，不丢失已有 Key 与地址。
+- **插件自管加密**：`config.json` 保存到插件配置目录前，会由插件使用 AES-CBC + HMAC-SHA256 加密并校验完整性；不依赖 Windows DPAPI 或其他系统加密服务。
+- 旧版明文（单 provider 顶层字段）配置**自动迁移**到新结构，并会在下次保存时转为加密文件。
 
 ---
 
@@ -79,7 +79,7 @@
 - **目标框架**：`net6.0-windows10.0.19041.0`（WPF）
 - **UI 库**：`iNKORE.UI.WPF.Modern 0.10.2.1`（与宿主一致，主题自动适配）
 - **SDK**：`InkCanvas.PluginSdk 1.7.19.9-gda522a8757`（NuGet）
-- **测试**：`AIChat.Tests`（xUnit）——配置读写/迁移/DPAPI、端点测速、SSE 解析、OpenAI/Anthropic delta 提取。
+- **测试**：`AIChat.Tests`（xUnit）——配置读写/迁移/插件加密、端点测速、SSE 解析、OpenAI/Anthropic delta 提取。
 - **CI**：GitHub Actions —— `build.yml`（push/PR 构建 + 自动发布）、`release.yml`（打 `v*` tag 发布）。
 
 ```bash
@@ -92,8 +92,8 @@ dotnet test AIChat.Tests/AIChat.Tests.csproj
 ```
 AIChat/
 ├── AIChatPlugin.cs            # 插件入口：服务解析、窗口管理、画布插入
-├── ConfigStore.cs             # 配置/多 provider 管理、旧配置迁移、DPAPI Key 加解密
-├── SecretStore.cs             # DPAPI 封装（CryptProtectData/CryptUnprotectData）
+├── ConfigStore.cs             # 配置/多 provider 管理、旧配置迁移、加密持久化
+├── SecretStore.cs             # 插件自管 AES-CBC + HMAC 加解密
 ├── Models.cs                  # 消息/会话/悬浮位置模型
 ├── Strings.cs                 # 中英双语字符串表（zh → en → 键名回退）
 ├── ChatService/

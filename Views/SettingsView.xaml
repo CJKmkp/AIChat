@@ -96,7 +96,7 @@
                         IsClosable="False"
                         Severity="Informational"
                         Title="AI 助手设置"
-                        Message="在左侧添加/切换提供商，右侧填写该提供商的接口配置。API Key 仅本地保存，并用 DPAPI 加密。"/>
+                        Message="在左侧添加/切换提供商，右侧填写该提供商的接口配置。配置仅保存在本插件目录，并由插件自行加密。"/>
 
             <ui:SettingsCard Header="名称">
                 <ui:SettingsCard.HeaderIcon>
