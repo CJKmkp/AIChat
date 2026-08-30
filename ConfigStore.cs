@@ -28,7 +28,7 @@ namespace AIChat
         public string Type { get; set; } = "openai-compatible";
         /// <summary>API 端点。</summary>
         public string BaseUrl { get; set; } = "";
-        /// <summary>DPAPI 加密后的 API Key（Base64）。</summary>
+        /// <summary>插件自管加密后的 API Key（Base64）。</summary>
         public string ApiKeyCipher { get; set; } = "";
         /// <summary>该 provider 当前选中的模型。</summary>
         public string Model { get; set; } = "";
@@ -45,7 +45,7 @@ namespace AIChat
 
     /// <summary>
     /// 插件配置：providers 列表 + 当前选中（CCSwitch 风格）+ 全局设置。
-    /// JSON 持久化到 PluginConfigFolder/config.json；API Key 走 DPAPI 加密存密文。
+    /// 以插件自管加密格式持久化到 PluginConfigFolder/config.json。
     /// </summary>
     public class PluginConfig
     {
@@ -196,7 +196,7 @@ namespace AIChat
     }
 
     /// <summary>
-    /// 配置文件读写。设置历史与悬浮按钮位置同在一个 config.json 中（API Key 密文字段分离）。
+    /// 配置文件读写。config.json 以插件自管 AES 加密后保存到插件配置目录。
     /// </summary>
     public class ConfigStore
     {
@@ -230,7 +230,9 @@ namespace AIChat
             {
                 if (File.Exists(_configPath))
                 {
-                    var json = File.ReadAllText(_configPath);
+                    var stored = File.ReadAllText(_configPath);
+                    // 兼容此前的明文 JSON；下次保存时会自动改为加密格式。
+                    var json = SecretStore.TryUnprotectText(stored, out var decrypted) ? decrypted : stored;
                     var cfg = JsonSerializer.Deserialize<PluginConfig>(json, JsonOpts);
                     if (cfg != null) Current = cfg;
                 }
@@ -312,7 +314,7 @@ namespace AIChat
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(_configPath));
                 var json = JsonSerializer.Serialize(Current, JsonOpts);
-                File.WriteAllText(_configPath, json);
+                File.WriteAllText(_configPath, SecretStore.ProtectText(json));
             }
             catch (Exception ex)
             {
